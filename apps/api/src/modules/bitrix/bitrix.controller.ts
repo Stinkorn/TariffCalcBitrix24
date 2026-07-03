@@ -136,14 +136,17 @@ export class BitrixController {
 
   @Post('placement/bind')
   async placementBind(@Body() body: PlacementAuthPayload) {
-    const result = await this.bitrixPlacementService.bindDealTab(body.domain);
-    return { success: true, result };
+    return this.bitrixPlacementService.bindDealTab(body.domain);
   }
 
   @Post('placement/unbind')
   async placementUnbind(@Body() body: PlacementAuthPayload) {
-    const result = await this.bitrixPlacementService.unbindDealTab(body.domain);
-    return { success: true, result };
+    return this.bitrixPlacementService.unbindDealTab(body.domain);
+  }
+
+  @Get('placement/list')
+  async placementList(@Query('domain') domain?: string) {
+    return this.bitrixPlacementService.getPlacementBindings(domain);
   }
 
   @Get('placement/status')

@@ -13,6 +13,12 @@ const PLACEMENT = 'CRM_DEAL_DETAIL_TAB';
 const TITLE = 'Тарифный калькулятор';
 const DESCRIPTION = 'Расчет стоимости перевозки по тарифам';
 
+type BitrixPlacementAuth = {
+  domain: string;
+  accessToken: string;
+  scope?: string | null;
+};
+
 type BitrixInstallPayload = {
   AUTH_ID?: string;
   REFRESH_ID?: string;
@@ -214,50 +220,82 @@ export class BitrixPlacementService {
   async bindDealTab(domain?: string) {
     const auth = await this.getPortalAuth(domain);
     this.assertPlacementScope(auth.scope);
+    const handler = this.getHandlerUrl();
     try {
-      return await this.callBitrixMethod(
+      const result = await this.callBitrixMethod(
         'placement.bind',
         {
           PLACEMENT: PLACEMENT,
-          HANDLER: this.getHandlerUrl(),
+          HANDLER: handler,
           TITLE: TITLE,
           DESCRIPTION: DESCRIPTION
         },
         auth
       );
+
+      return {
+        success: true,
+        alreadyBound: false,
+        message: 'Placement handler bound successfully',
+        placement: PLACEMENT,
+        handler,
+        title: TITLE,
+        portalDomain: auth.domain,
+        result
+      };
     } catch (error) {
-      throw this.mapPlacementError(error);
+      const mapped = this.mapPlacementError(error, auth.domain, handler);
+      if (mapped) {
+        return mapped;
+      }
+      throw error;
     }
   }
 
   async unbindDealTab(domain?: string) {
     const auth = await this.getPortalAuth(domain);
-    return this.callBitrixMethod(
+    const handler = this.getHandlerUrl();
+    const result = await this.callBitrixMethod(
       'placement.unbind',
       {
         PLACEMENT: PLACEMENT,
-        HANDLER: this.getHandlerUrl()
+        HANDLER: handler
       },
       auth
     );
+
+    return {
+      success: true,
+      placement: PLACEMENT,
+      handler,
+      portalDomain: auth.domain,
+      result
+    };
   }
 
   async getPlacementBindings(domain?: string) {
     const auth = await this.getPortalAuth(domain);
-    return this.callBitrixMethod('placement.get', {}, auth);
+    const result = await this.callBitrixMethod('placement.get', {}, auth);
+    return {
+      success: true,
+      placement: PLACEMENT,
+      handler: this.getHandlerUrl(),
+      portalDomain: auth.domain,
+      result
+    };
   }
 
   private async callBitrixMethod(
     method: string,
     params: Record<string, unknown>,
-    authInput: { domain: string; accessToken: string }
+    authInput: BitrixPlacementAuth
   ) {
     return this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
   }
 
   private async getPortalAuth(
     requestedDomain?: string
-  ): Promise<{ domain: string; accessToken: string; scope?: string | null }> {
+  ): Promise<BitrixPlacementAuth> {
     const portal = await this.findSavedPortal(requestedDomain);
     if (!portal) {
       throw new BadRequestException(
@@ -520,16 +558,31 @@ export class BitrixPlacementService {
     );
   }
 
-  private mapPlacementError(error: unknown) {
+  private mapPlacementError(error: unknown, portalDomain: string, handler: string) {
+    if (
+      error instanceof Error &&
+      /handler already binded/i.test(error.message)
+    ) {
+      return {
+        success: true,
+        alreadyBound: true,
+        message: 'Placement handler is already bound',
+        placement: PLACEMENT,
+        handler,
+        title: TITLE,
+        portalDomain
+      };
+    }
+
     if (
       error instanceof Error &&
       /higher privileges than provided by the access token/i.test(error.message)
     ) {
-      return new BadRequestException(
+      throw new BadRequestException(
         'В локальном приложении Bitrix24 нужно добавить scope placement / Встраивание приложений и переустановить приложение'
       );
     }
 
-    return error;
+    return null;
   }
 }
