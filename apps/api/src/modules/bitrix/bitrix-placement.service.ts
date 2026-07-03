@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,16 +17,41 @@ type BitrixInstallPayload = {
   AUTH_ID?: string;
   REFRESH_ID?: string;
   member_id?: string;
+  MEMBER_ID?: string;
   DOMAIN?: string;
+  domain?: string;
   AUTH_EXPIRES?: string | number;
   expires?: string | number;
   expires_at?: string | number;
   scope?: string;
   status?: string;
+  auth?: {
+    access_token?: string;
+    refresh_token?: string;
+    expires?: string | number;
+    domain?: string;
+    member_id?: string;
+    scope?: string;
+  };
+};
+
+type NormalizedInstallPayload = {
+  domain?: string;
+  memberId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expires?: string | number;
+  expiresAt?: string | number;
+  scope?: string;
+  status?: string;
+  receivedKeys: string[];
+  receivedAuthKeys: string[];
 };
 
 @Injectable()
 export class BitrixPlacementService {
+  private readonly logger = new Logger(BitrixPlacementService.name);
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -41,28 +67,52 @@ export class BitrixPlacementService {
     return `${normalized}/bitrix/deal-tab`;
   }
 
-  async installApp(payload: BitrixInstallPayload) {
-    const domain = payload.DOMAIN?.trim();
-    const memberId = payload.member_id?.trim();
-    const accessToken = payload.AUTH_ID?.trim();
-    const refreshToken = payload.REFRESH_ID?.trim();
+  async installApp(payload: BitrixInstallPayload | Record<string, unknown>) {
+    const normalized = this.normalizeInstallPayload(payload);
 
-    if (!domain || !memberId || !accessToken || !refreshToken) {
-      throw new BadRequestException(
-        'Bitrix install payload is incomplete. Expected DOMAIN, member_id, AUTH_ID and REFRESH_ID.'
-      );
+    this.logger.log(
+      `Bitrix install payload received: keys=${JSON.stringify(normalized.receivedKeys)}, authKeys=${JSON.stringify(normalized.receivedAuthKeys)}`
+    );
+
+    const domain = normalized.domain?.trim();
+    const memberId = normalized.memberId?.trim();
+    const accessToken = normalized.accessToken?.trim();
+    const refreshToken = normalized.refreshToken?.trim();
+
+    const missingRequiredFields = [
+      !domain ? 'domain' : null,
+      !memberId ? 'member_id' : null,
+      !accessToken ? 'access_token' : null,
+      !refreshToken ? 'refresh_token' : null
+    ].filter((value): value is string => Boolean(value));
+
+    if (missingRequiredFields.length > 0) {
+      throw new BadRequestException({
+        message:
+          'Bitrix install payload is incomplete. Expected DOMAIN/domain, member_id/MEMBER_ID, AUTH_ID/auth.access_token and REFRESH_ID/auth.refresh_token.',
+        error: 'Bad Request',
+        statusCode: 400,
+        receivedKeys: normalized.receivedKeys,
+        receivedAuthKeys: normalized.receivedAuthKeys,
+        missingRequiredFields
+      });
     }
 
+    const safeDomain = domain as string;
+    const safeMemberId = memberId as string;
+    const safeAccessToken = accessToken as string;
+    const safeRefreshToken = refreshToken as string;
+
     const portal = await this.prisma.bitrixPortal.upsert({
-      where: { memberId },
+      where: { memberId: safeMemberId },
       create: {
-        memberId,
-        domain,
-        appStatus: payload.status?.trim() || 'INSTALLED'
+        memberId: safeMemberId,
+        domain: safeDomain,
+        appStatus: normalized.status?.trim() || 'INSTALLED'
       },
       update: {
-        domain,
-        appStatus: payload.status?.trim() || 'INSTALLED',
+        domain: safeDomain,
+        appStatus: normalized.status?.trim() || 'INSTALLED',
         uninstalledAt: null
       }
     });
@@ -73,10 +123,14 @@ export class BitrixPlacementService {
     });
 
     const tokenData = {
-      accessToken,
-      refreshToken,
-      expiresAt: this.resolveExpiresAt(payload),
-      scope: payload.scope?.trim() || null
+      accessToken: safeAccessToken,
+      refreshToken: safeRefreshToken,
+      expiresAt: this.resolveExpiresAt({
+        AUTH_EXPIRES: normalized.expires,
+        expires: normalized.expires,
+        expires_at: normalized.expiresAt
+      }),
+      scope: normalized.scope?.trim() || null
     };
 
     if (latestToken) {
@@ -93,11 +147,22 @@ export class BitrixPlacementService {
       });
     }
 
+    let placementBind: { success: boolean; result?: unknown; error?: string };
+    try {
+      const result = await this.bindDealTab(safeDomain);
+      placementBind = { success: true, result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'placement.bind failed';
+      this.logger.warn(`Bitrix install saved portal, but placement bind failed: ${message}`);
+      placementBind = { success: false, error: message };
+    }
+
     return {
       success: true,
       portalDomain: portal.domain,
       memberId: portal.memberId,
-      tokenExpiresAt: tokenData.expiresAt.toISOString()
+      tokenExpiresAt: tokenData.expiresAt.toISOString(),
+      placementBind
     };
   }
 
@@ -296,5 +361,42 @@ export class BitrixPlacementService {
     }
 
     return new Date(Date.now() + 3600 * 1000);
+  }
+
+  private normalizeInstallPayload(
+    payload: BitrixInstallPayload | Record<string, unknown>
+  ): NormalizedInstallPayload {
+    const source = (payload ?? {}) as BitrixInstallPayload;
+    const auth =
+      source.auth && typeof source.auth === 'object' && !Array.isArray(source.auth)
+        ? source.auth
+        : undefined;
+
+    return {
+      domain: this.readString(source.DOMAIN) ?? this.readString(source.domain) ?? this.readString(auth?.domain),
+      memberId:
+        this.readString(source.member_id) ??
+        this.readString(source.MEMBER_ID) ??
+        this.readString(auth?.member_id),
+      accessToken:
+        this.readString(source.AUTH_ID) ?? this.readString(auth?.access_token),
+      refreshToken:
+        this.readString(source.REFRESH_ID) ?? this.readString(auth?.refresh_token),
+      expires: source.AUTH_EXPIRES ?? auth?.expires ?? source.expires,
+      expiresAt: source.expires_at,
+      scope: this.readString(source.scope) ?? this.readString(auth?.scope),
+      status: this.readString(source.status),
+      receivedKeys: Object.keys(source),
+      receivedAuthKeys: auth ? Object.keys(auth) : []
+    };
+  }
+
+  private readString(value: unknown) {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 }

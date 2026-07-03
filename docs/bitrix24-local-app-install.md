@@ -24,6 +24,21 @@ BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
 - `refresh_token`
 - `expires / expires_at`
 
+Поддерживаемые форматы входного payload:
+
+- `DOMAIN`
+- `domain`
+- `member_id`
+- `MEMBER_ID`
+- `AUTH_ID`
+- `REFRESH_ID`
+- `AUTH_EXPIRES`
+- `auth.access_token`
+- `auth.refresh_token`
+- `auth.expires`
+- `auth.domain`
+- `auth.member_id`
+
 Токены сохраняются сервером и затем используются для:
 
 - `POST /bitrix/placement/bind`
@@ -53,6 +68,12 @@ BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
   "statusCode": 400
 }
 ```
+
+Если install payload неполный, backend возвращает безопасную диагностику без значений токенов:
+
+- `receivedKeys`
+- `receivedAuthKeys`
+- `missingRequiredFields`
 
 ## Привязка вкладки сделки
 
