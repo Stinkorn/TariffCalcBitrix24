@@ -213,6 +213,7 @@ export class BitrixPlacementService {
       appPublicUrl,
       webPublicUrl,
       portalDomain,
+      savedPortalDomain: savedPortal?.domain ?? null,
       handlerUrl: appPublicUrl ? `${appPublicUrl.replace(/\/+$/, '')}/bitrix/deal-tab` : null,
       clientIdConfigured: Boolean(clientId),
       clientSecretConfigured: Boolean(clientSecret),
