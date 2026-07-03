@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.log
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env
+.DS_Store
+Thumbs.db
+.agents/
+apps/*/node_modules/
+apps/*/dist/
+apps/*/.env
+prisma/migrations/

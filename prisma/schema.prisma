@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRoleCode {
+  ADMIN
+  LEAD
+  MANAGER
+}
+
+enum RouteDirection {
+  KLD_OUT
+  KLD_IN
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  code        UserRoleCode @unique
+  name        String
+  description String?
+  users       User[]
+}
+
+model BitrixPortal {
+  id          String         @id @default(uuid())
+  memberId    String         @unique
+  domain      String         @unique
+  appStatus   String         @default("INSTALLED")
+  installedAt DateTime       @default(now())
+  uninstalledAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  users       User[]
+  tokens      BitrixToken[]
+}
+
+model BitrixToken {
+  id           String      @id @default(uuid())
+  portalId     String
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  portal       BitrixPortal @relation(fields: [portalId], references: [id], onDelete: Cascade)
+
+  @@index([portalId])
+  @@index([expiresAt])
+}
+
+model User {
+  id           String       @id @default(uuid())
+  bitrixUserId String?
+  email        String?
+  fullName     String?
+  username     String?
+  passwordHash String?
+  isActive     Boolean      @default(true)
+  roleId       String
+  portalId     String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  role         Role         @relation(fields: [roleId], references: [id])
+  portal       BitrixPortal? @relation(fields: [portalId], references: [id])
+  @@index([bitrixUserId])
+  @@index([portalId])
+}
+
+model Calculation {
+  id            String            @id @default(uuid())
+  portalDomain  String?
+  dealId        String?
+  routeType     String?
+  origin        String
+  destination   String
+  weightKg      Decimal           @db.Decimal(18, 3)
+  volumeM3      Decimal           @db.Decimal(18, 3)
+  transportType String
+  containerType String?
+  containerStatus String?
+  currency      String
+  totalCost     Decimal           @db.Decimal(18, 2)
+  clientPrice   Decimal           @db.Decimal(18, 2)
+  margin        Decimal           @db.Decimal(18, 2)
+  marginType    String?
+  marginValue   Float?
+  services      Json?
+  warnings      Json?
+  status        String            @default("DRAFT")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  lines         CalculationLine[]
+
+  @@index([dealId])
+  @@index([createdAt])
+}
+
+model CalculationLine {
+  id            String      @id @default(uuid())
+  calculationId String
+  stage         String
+  name          String
+  cost          Decimal     @db.Decimal(18, 2)
+  currency      String
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  calculation   Calculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
+
+  @@index([calculationId, sortOrder])
+}
+
+// TODO: Add dictionaries and tariff tables after business formulas are finalized:
+// - ContainerType, ContainerStatus, Location, TransportType
+// - AutoTariff, MainlineTariff, SeaFreightTariff, StorageTariff, etc.

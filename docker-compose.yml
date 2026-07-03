@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tariffcalc-postgres
+    environment:
+      POSTGRES_DB: tariffcalc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tariffcalc"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: tariffcalc-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      API_PORT: 9099
+      WEB_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tariffcalc?schema=public
+    ports:
+      - "9099:9099"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: tariffcalc-web
+    depends_on:
+      - api
+    environment:
+      VITE_API_BASE_URL: http://localhost:9099/api
+      WEB_PORT: 5173
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:

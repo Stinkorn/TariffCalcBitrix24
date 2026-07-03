@@ -1,0 +1,35 @@
+{
+  "name": "tariffcalc-bitrix24",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:api dev:web",
+    "dev:api": "npm run start:dev --workspace @tariffcalc/api",
+    "dev:web": "npm run dev --workspace @tariffcalc/web",
+    "build": "npm run build:web && npm run build:api",
+    "build:api": "npm run build --workspace @tariffcalc/api",
+    "build:web": "npm run build --workspace @tariffcalc/web",
+    "start:prod": "npm run start:prod --workspace @tariffcalc/api",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "typecheck": "npm-run-all typecheck:api typecheck:web",
+    "typecheck:api": "npm run typecheck --workspace @tariffcalc/api",
+    "typecheck:web": "npm run typecheck --workspace @tariffcalc/web",
+    "prisma:validate": "npm run prisma:validate --workspace @tariffcalc/api",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "npm run prisma:push --workspace @tariffcalc/api"
+  },
+  "devDependencies": {
+    "browserslist": "^4.28.2",
+    "caniuse-lite": "^1.0.30001793",
+    "npm-run-all": "^4.1.5",
+    "prisma": "^5.20.0",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  }
+}
