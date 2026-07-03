@@ -139,6 +139,49 @@ Frontend или backend должен извлекать `dealId` из placement 
 
 - `NEEDS_CONFIRMATION`: использовать ли числовые, строковые или файловые типы полей
 
+## Запись сводки расчета в timeline
+
+После успешного расчета backend может записывать краткую сводку в таймлайн сделки через Bitrix24 REST API.
+
+Endpoint backend:
+
+- `POST /bitrix/deals/:dealId/timeline-comment`
+
+Пример:
+
+```bash
+curl -X POST http://localhost:9099/bitrix/deals/4293/timeline-comment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portalDomain": "example.bitrix24.ru",
+    "from": "Калининград",
+    "to": "Москва",
+    "cargoType": "40REF",
+    "cargoParams": "LOADED",
+    "weightKg": 1000,
+    "volumeM3": 10,
+    "selectedTariff": "KLD_OUT / AUTO",
+    "finalPrice": 2750,
+    "currency": "EUR",
+    "calculationId": "uuid"
+  }'
+```
+
+Сводка должна включать:
+
+- маршрут
+- тип груза
+- вес и объем
+- выбранный тариф
+- итоговую цену
+- дату и время расчета
+
+Требования:
+
+- использовать сохраненный OAuth `access_token` портала только на backend
+- при истечении токена выполнять refresh и повторять вызов через существующий refresh flow
+- не логировать `access_token`, `refresh_token` и другие чувствительные значения
+
 ## Пользовательские поля сделки
 
 До запуска интеграции в портале должны существовать или быть созданы:

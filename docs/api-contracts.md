@@ -740,3 +740,69 @@ Path params:
 ### TODO
 
 - `NEEDS_CONFIRMATION`: формат хранения ссылки на PDF
+
+## `POST /bitrix/deals/:dealId/timeline-comment`
+
+### Назначение
+
+Записать сводку расчета в таймлайн сделки Битрикс24 как комментарий.
+
+### Request
+
+Path params:
+
+- `dealId`
+
+```json
+{
+  "portalDomain": "example.bitrix24.ru",
+  "from": "Калининград",
+  "to": "Москва",
+  "cargoType": "40REF",
+  "cargoParams": "LOADED",
+  "weightKg": 1000,
+  "volumeM3": 10,
+  "selectedTariff": "KLD_OUT / AUTO",
+  "finalPrice": 2750,
+  "currency": "EUR",
+  "calculationDateTime": "2026-07-03T12:00:00.000Z",
+  "calculationId": "uuid"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "dealId": "12345",
+  "message": "Расчет записан в сделку Bitrix24",
+  "bitrixResult": {}
+}
+```
+
+### Curl
+
+```bash
+curl -X POST http://localhost:9099/bitrix/deals/4293/timeline-comment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portalDomain": "example.bitrix24.ru",
+    "from": "Калининград",
+    "to": "Москва",
+    "cargoType": "40REF",
+    "cargoParams": "LOADED",
+    "weightKg": 1000,
+    "volumeM3": 10,
+    "selectedTariff": "KLD_OUT / AUTO",
+    "finalPrice": 2750,
+    "currency": "EUR",
+    "calculationId": "uuid"
+  }'
+```
+
+### Ошибки
+
+- `400 BAD_REQUEST`
+- `404 PORTAL_NOT_FOUND`
+- `502 BITRIX_API_ERROR`

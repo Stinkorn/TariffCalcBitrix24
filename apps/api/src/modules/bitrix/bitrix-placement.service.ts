@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  BadGatewayException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -70,6 +71,22 @@ type NormalizedInstallPayload = {
 type BitrixInstallRequestContext = {
   referer?: string;
   origin?: string;
+};
+
+type TimelineCommentPayload = {
+  portalDomain?: string;
+  route?: string;
+  from?: string;
+  to?: string;
+  cargoType?: string;
+  cargoParams?: string;
+  weightKg?: number;
+  volumeM3?: number;
+  selectedTariff?: string;
+  finalPrice: number;
+  currency?: string;
+  calculationDateTime?: string;
+  calculationId?: string;
 };
 
 @Injectable()
@@ -258,6 +275,79 @@ export class BitrixPlacementService {
       portalDomain: auth.domain,
       result
     };
+  }
+
+  async addDealTimelineComment(dealId: string, payload: TimelineCommentPayload) {
+    const auth = await this.getPortalAuth(payload.portalDomain);
+    const comment = this.buildTimelineComment(payload);
+
+    this.logger.log(
+      `Writing Bitrix deal timeline comment: portal=${auth.domain}, dealId=${dealId}, fields=${JSON.stringify(Object.keys(payload).sort())}`
+    );
+
+    try {
+      const result = await this.addTimelineEntryWithFallback(auth, dealId, comment);
+
+      return {
+        success: true,
+        dealId,
+        message: 'Расчет записан в сделку Bitrix24',
+        bitrixResult: result
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Bitrix timeline comment request failed';
+      this.logger.warn(
+        `Bitrix deal timeline comment failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`
+      );
+      throw new BadGatewayException(
+        `Не удалось записать расчет в таймлайн Bitrix24: ${message}`
+      );
+    }
+  }
+
+  private async addTimelineEntryWithFallback(
+    auth: BitrixPlacementAuth,
+    dealId: string,
+    comment: string
+  ) {
+    try {
+      return await this.callBitrixMethod(
+        'crm.timeline.comment.add',
+        {
+          fields: {
+            ENTITY_ID: dealId,
+            ENTITY_TYPE: 'deal',
+            COMMENT: comment
+          }
+        },
+        auth
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'crm.timeline.comment.add failed';
+      if (!this.shouldFallbackToActivity(message)) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `Bitrix timeline comment method unavailable, fallback to crm.activity.add: portal=${auth.domain}, dealId=${dealId}, message=${message}`
+      );
+
+      return this.callBitrixMethod(
+        'crm.activity.add',
+        {
+          fields: {
+            OWNER_TYPE_ID: 2,
+            OWNER_ID: Number(dealId),
+            TYPE_ID: 4,
+            SUBJECT: 'Расчет тарифа',
+            DESCRIPTION: comment,
+            DESCRIPTION_TYPE: 3
+          }
+        },
+        auth
+      );
+    }
   }
 
   private async bindPlacement(config: PlacementConfig, domain?: string) {
@@ -620,5 +710,81 @@ export class BitrixPlacementService {
     }
 
     return null;
+  }
+
+  private buildTimelineComment(payload: TimelineCommentPayload) {
+    const route = this.buildRoute(payload);
+    const cargo = this.buildCargoLabel(payload);
+    const weightVolume = this.buildWeightVolumeLabel(payload);
+    const lines = [
+      'Расчет тарифа',
+      `Маршрут: ${route}`,
+      `Груз: ${cargo}`,
+      `Вес/объем: ${weightVolume}`,
+      `Тариф: ${payload.selectedTariff?.trim() || '-'}`,
+      `Итоговая цена: ${this.formatNumber(payload.finalPrice)}${payload.currency ? ` ${payload.currency}` : ''}`,
+      `Дата расчета: ${this.formatCalculationDate(payload.calculationDateTime)}`
+    ];
+
+    if (payload.calculationId?.trim()) {
+      lines.push(`ID расчета: ${payload.calculationId.trim()}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatCalculationDate(value?: string) {
+    if (!value) {
+      return new Date().toLocaleString('ru-RU');
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    return parsed.toLocaleString('ru-RU');
+  }
+
+  private formatNumber(value: number) {
+    return Number(value).toLocaleString('ru-RU', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 3
+    });
+  }
+
+  private buildRoute(payload: TimelineCommentPayload) {
+    if (payload.route?.trim()) {
+      return payload.route.trim();
+    }
+
+    const from = payload.from?.trim();
+    const to = payload.to?.trim();
+    if (from || to) {
+      return `${from || '-'} -> ${to || '-'}`;
+    }
+
+    return '-';
+  }
+
+  private buildCargoLabel(payload: TimelineCommentPayload) {
+    const values = [payload.cargoType?.trim(), payload.cargoParams?.trim()].filter(Boolean);
+    return values.length > 0 ? values.join(', ') : '-';
+  }
+
+  private buildWeightVolumeLabel(payload: TimelineCommentPayload) {
+    const weight =
+      payload.weightKg === undefined || payload.weightKg === null
+        ? '-'
+        : `${this.formatNumber(payload.weightKg)} кг`;
+    const volume =
+      payload.volumeM3 === undefined || payload.volumeM3 === null
+        ? '-'
+        : `${this.formatNumber(payload.volumeM3)} м3`;
+    return `${weight} / ${volume}`;
+  }
+
+  private shouldFallbackToActivity(message: string) {
+    return /method not found|unknown method|not supported|not available/i.test(message);
   }
 }

@@ -7,6 +7,7 @@ import {
   Headers,
   HttpCode,
   HttpException,
+  Param,
   Post,
   Query,
   Res
@@ -62,6 +63,22 @@ type DealTabPayload = {
   member_id?: string;
   AUTH_ID?: string;
   [key: string]: unknown;
+};
+
+type TimelineCommentBody = {
+  portalDomain?: string;
+  route?: string;
+  from?: string;
+  to?: string;
+  cargoType?: string;
+  cargoParams?: string;
+  weightKg?: number;
+  volumeM3?: number;
+  selectedTariff?: string;
+  finalPrice: number;
+  currency?: string;
+  calculationDateTime?: string;
+  calculationId?: string;
 };
 
 @Controller('bitrix')
@@ -205,8 +222,9 @@ export class BitrixController {
     <meta charset="utf-8" />
     <title>Калькулятор перевозки</title>
     <style>
-      html, body { margin: 0; padding: 0; width: 100%; min-height: 100%; }
-      iframe { border: 0; width: 100%; min-height: 900px; }
+      html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+      body { overflow: hidden; }
+      iframe { width: 100%; height: 100vh; min-height: 100vh; border: 0; display: block; }
     </style>
   </head>
   <body>
@@ -243,6 +261,15 @@ export class BitrixController {
   @Get('placement/status')
   async placementStatus() {
     return this.bitrixPlacementService.getStatus();
+  }
+
+  @Post('deals/:dealId/timeline-comment')
+  @HttpCode(200)
+  async addDealTimelineComment(
+    @Param('dealId') dealId: string,
+    @Body() body: TimelineCommentBody
+  ) {
+    return this.bitrixPlacementService.addDealTimelineComment(dealId, body);
   }
 
   @Get('debug/context')

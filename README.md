@@ -12,8 +12,9 @@ MVP калькулятора стоимости перевозки для вст
 - Справочники для UI: `GET /dictionaries/bootstrap`
 - Расчет без сохранения: `POST /calculator/calculate`
 - Сохранение и чтение истории расчетов: `/calculations/*`
-- Bitrix24 shell для вкладки сделки: `GET /bitrix/deal-tab`
+- Bitrix24 shell для вкладки сделки: `GET/POST /bitrix/deal-tab`
 - DEV-привязка placement через входящий вебхук Bitrix24: `/bitrix/placement/bind`
+- Запись результата расчета в таймлайн сделки Bitrix24: `POST /bitrix/deals/:dealId/timeline-comment`
 
 ## Стек
 
@@ -167,6 +168,28 @@ npm run prisma:push         # применение schema через db push
 - `GET /bitrix/install` - HTML-страница проверки конфигурации и ручного bind
 - `POST /bitrix/install` - заготовка install handler
 - `GET /bitrix/deal-tab` - HTML shell с iframe на frontend `/deal-calculator`
+- `POST /bitrix/deal-tab` - тот же HTML shell для Bitrix24 placement POST handler
+- `POST /bitrix/deals/:dealId/timeline-comment` - запись сводки расчета в таймлайн сделки
+
+Пример:
+
+```bash
+curl -X POST http://localhost:9099/bitrix/deals/4293/timeline-comment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portalDomain": "example.bitrix24.ru",
+    "from": "Калининград",
+    "to": "Москва",
+    "cargoType": "40REF",
+    "cargoParams": "LOADED",
+    "weightKg": 1000,
+    "volumeM3": 10,
+    "selectedTariff": "KLD_OUT / AUTO",
+    "finalPrice": 2750,
+    "currency": "EUR",
+    "calculationId": "uuid"
+  }'
+```
 - `POST /bitrix/placement/bind` - регистрация вкладки сделки `CRM_DEAL_DETAIL_TAB`
 - `POST /bitrix/placement/unbind` - снятие привязки
 - `GET /bitrix/placement/status` - статус конфигурации
@@ -211,7 +234,6 @@ Prisma-схема сейчас содержит:
 ## Текущие ограничения
 
 - Формула расчета временная и не использует реальные тарифы.
-- Bitrix24 OAuth install flow не завершен: install payload пока не сохраняется.
-- Запись результатов в поля сделки Bitrix24 не реализована.
+- Запись результатов в пользовательские поля сделки Bitrix24 не реализована.
 - PDF/XLSX экспорт и импорт тарифов не реализованы.
 - В подробных docs часть контрактов описывает целевое состояние и может отличаться от текущего MVP.
