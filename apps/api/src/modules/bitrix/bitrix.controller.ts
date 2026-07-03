@@ -5,6 +5,7 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   HttpException,
   Post,
   Query,
@@ -168,6 +169,7 @@ export class BitrixController {
   }
 
   @Post('deal-tab')
+  @HttpCode(200)
   @Header('Content-Type', 'text/html; charset=utf-8')
   dealTabPost(
     @Query() query: Record<string, unknown>,
