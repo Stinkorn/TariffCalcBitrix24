@@ -1,10 +1,13 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import * as classTransformer from 'class-transformer';
+import * as classValidator from 'class-validator';
 import { AppModule } from './modules/app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, new ExpressAdapter());
   const configService = app.get(ConfigService);
   const port = Number(configService.get('APP_PORT', 9099));
   const webOrigin =
@@ -15,7 +18,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-      whitelist: true
+      whitelist: true,
+      transformerPackage: classTransformer,
+      validatorPackage: classValidator
     })
   );
 
