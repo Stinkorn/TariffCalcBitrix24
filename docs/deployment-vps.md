@@ -78,6 +78,7 @@ nano apps/api/.env
 APP_PORT=9099
 APP_PUBLIC_URL=https://api.calc.<domain>
 WEB_PUBLIC_URL=https://calc.<domain>
+WEB_DIST_PATH=/var/www/tariffcalc-bitrix24/apps/web/dist
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public"
 BITRIX_PORTAL_DOMAIN=
 BITRIX_WEBHOOK_URL=
@@ -97,6 +98,8 @@ VITE_API_URL=https://api.calc.<domain>
 ```
 
 Важно: Vite подставляет `VITE_API_URL` во время сборки, поэтому после изменения frontend env нужно заново выполнить `npm run build:web`.
+
+`WEB_DIST_PATH` нужен для production backend, чтобы NestJS корректно находил собранный frontend независимо от рабочего каталога PM2.
 
 ## 5. Установка, Prisma и сборка
 
