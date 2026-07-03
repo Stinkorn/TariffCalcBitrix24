@@ -48,6 +48,12 @@ type SavedCalculation = {
   createdAt: string;
 };
 
+type TimelineCommentResponse = {
+  success: boolean;
+  portalDomain: string;
+  dealId: string;
+};
+
 type FormState = {
   dealId: string;
   portalDomain: string;
@@ -86,7 +92,7 @@ function formatMoney(value: number | string, currency: string) {
 export function DealCalculatorPage() {
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
-  const initialDomain = searchParams.get('domain') ?? '';
+  const initialDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? '';
 
   const initialFormState = useMemo<FormState>(
     () => ({
@@ -118,9 +124,12 @@ export function DealCalculatorPage() {
   const [history, setHistory] = useState<SavedCalculation[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [lastPayload, setLastPayload] = useState<FormState>(initialFormState);
+  const [calculatedAt, setCalculatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [writingTimeline, setWritingTimeline] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [timelineMessage, setTimelineMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void loadDictionaries();
@@ -188,6 +197,7 @@ export function DealCalculatorPage() {
     setLoading(true);
     setError(null);
     setSavedId(null);
+    setTimelineMessage(null);
 
     const formData = new FormData(event.currentTarget);
     const state: FormState = {
@@ -234,10 +244,14 @@ export function DealCalculatorPage() {
 
       const data = (await response.json()) as CalculateResponse;
       setResult(data);
+      setCalculatedAt(new Date().toISOString());
       await loadHistory(state.dealId);
     } catch (submitError) {
       setResult(null);
-      setError(`Ошибка расчета: ${String(submitError)}`);
+      setCalculatedAt(null);
+      setError(
+        `Ошибка расчета: ${submitError instanceof Error ? submitError.message : String(submitError)}`
+      );
     } finally {
       setLoading(false);
     }
@@ -251,6 +265,7 @@ export function DealCalculatorPage() {
     setSaving(true);
     setError(null);
     setSavedId(null);
+    setTimelineMessage(null);
 
     try {
       const response = await fetch(`${API_BASE_URL}/calculations`, {
@@ -287,16 +302,75 @@ export function DealCalculatorPage() {
       setSavedId(saved.id);
       await loadHistory(lastPayload.dealId);
     } catch (saveError) {
-      setError(`Ошибка сохранения: ${String(saveError)}`);
+      setError(
+        `Ошибка сохранения: ${saveError instanceof Error ? saveError.message : String(saveError)}`
+      );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleWriteToBitrixDeal() {
+    if (!result || !lastPayload.dealId.trim()) {
+      return;
+    }
+
+    setWritingTimeline(true);
+    setError(null);
+    setTimelineMessage(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/bitrix/deals/${encodeURIComponent(lastPayload.dealId.trim())}/timeline-comment`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            portalDomain: lastPayload.portalDomain || undefined,
+            route: `${lastPayload.origin} -> ${lastPayload.destination}`,
+            cargoType: `${lastPayload.containerType} / ${lastPayload.containerStatus}`,
+            weightKg: lastPayload.weightKg,
+            volumeM3: lastPayload.volumeM3,
+            selectedTariff: `${lastPayload.routeType} / ${lastPayload.transportType}`,
+            finalPrice: result.clientPrice,
+            currency: result.currency,
+            calculationDateTime: calculatedAt ?? undefined
+          })
+        }
+      );
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const payload = (await response.json()) as { message?: string | string[] };
+          if (Array.isArray(payload.message)) {
+            message = payload.message.join('; ');
+          } else if (typeof payload.message === 'string' && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // ignore non-JSON error body
+        }
+        throw new Error(message);
+      }
+
+      await response.json() as TimelineCommentResponse;
+      setTimelineMessage('Расчет записан в сделку Bitrix24');
+    } catch (timelineError) {
+      setError(
+        `Ошибка записи в сделку: ${timelineError instanceof Error ? timelineError.message : String(timelineError)}`
+      );
+    } finally {
+      setWritingTimeline(false);
     }
   }
 
   return (
     <main className="page">
       <section className="shell">
-        <h1>Калькулятор перевозки</h1>
+        <header className="page-header">
+          <h1>Калькулятор перевозки</h1>
+        </header>
 
         <form className="grid" onSubmit={handleSubmit}>
           <section className="card">
@@ -341,6 +415,7 @@ export function DealCalculatorPage() {
 
         {error && <p className="error">{error}</p>}
         {savedId && <p className="success">Расчет сохранен. ID: {savedId}</p>}
+        {timelineMessage && <p className="success">{timelineMessage}</p>}
 
         <section className="card highlight">
           <h2>Результат расчета</h2>
@@ -371,9 +446,18 @@ export function DealCalculatorPage() {
                 <p key={warning} className="warning">{warning}</p>
               ))}
 
-              <button type="button" onClick={handleSaveCalculation} disabled={saving}>
-                {saving ? 'Сохранение...' : 'Сохранить расчет'}
-              </button>
+              <div className="actions result-actions">
+                <button type="button" onClick={handleSaveCalculation} disabled={saving}>
+                  {saving ? 'Сохранение...' : 'Сохранить расчет'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleWriteToBitrixDeal}
+                  disabled={writingTimeline || !result || !lastPayload.dealId.trim()}
+                >
+                  {writingTimeline ? 'Запись...' : 'Записать расчет в сделку'}
+                </button>
+              </div>
             </>
           )}
         </section>
