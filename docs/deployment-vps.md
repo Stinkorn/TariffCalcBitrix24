@@ -81,6 +81,8 @@ WEB_PUBLIC_URL=https://calc.<domain>
 WEB_DIST_PATH=/var/www/tariffcalc-bitrix24/apps/web/dist
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public"
 BITRIX_PORTAL_DOMAIN=
+BITRIX_CLIENT_ID=
+BITRIX_CLIENT_SECRET=
 BITRIX_WEBHOOK_URL=
 ```
 
@@ -100,6 +102,8 @@ VITE_API_URL=https://api.calc.<domain>
 Важно: Vite подставляет `VITE_API_URL` во время сборки, поэтому после изменения frontend env нужно заново выполнить `npm run build:web`.
 
 `WEB_DIST_PATH` нужен для production backend, чтобы NestJS корректно находил собранный frontend независимо от рабочего каталога PM2.
+
+Для локального серверного приложения Bitrix24 используйте `BITRIX_CLIENT_ID` и `BITRIX_CLIENT_SECRET`. Подробный install flow описан в `docs/bitrix24-local-app-install.md`.
 
 ## 5. Установка, Prisma и сборка
 

@@ -1,24 +1,34 @@
 import {
   BadRequestException,
   Injectable,
-  InternalServerErrorException
+  InternalServerErrorException,
+  NotFoundException
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixRestClient } from './bitrix-rest.client';
 
 const PLACEMENT = 'CRM_DEAL_DETAIL_TAB';
-const TITLE = 'Калькулятор перевозки';
+const TITLE = 'Тарифный калькулятор';
 const DESCRIPTION = 'Расчет стоимости перевозки по тарифам';
 
-type BindAuthInput = {
-  domain?: string;
-  accessToken?: string;
+type BitrixInstallPayload = {
+  AUTH_ID?: string;
+  REFRESH_ID?: string;
+  member_id?: string;
+  DOMAIN?: string;
+  AUTH_EXPIRES?: string | number;
+  expires?: string | number;
+  expires_at?: string | number;
+  scope?: string;
+  status?: string;
 };
 
 @Injectable()
 export class BitrixPlacementService {
   constructor(
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
     private readonly bitrixRestClient: BitrixRestClient
   ) {}
 
@@ -31,11 +41,80 @@ export class BitrixPlacementService {
     return `${normalized}/bitrix/deal-tab`;
   }
 
-  getStatus() {
+  async installApp(payload: BitrixInstallPayload) {
+    const domain = payload.DOMAIN?.trim();
+    const memberId = payload.member_id?.trim();
+    const accessToken = payload.AUTH_ID?.trim();
+    const refreshToken = payload.REFRESH_ID?.trim();
+
+    if (!domain || !memberId || !accessToken || !refreshToken) {
+      throw new BadRequestException(
+        'Bitrix install payload is incomplete. Expected DOMAIN, member_id, AUTH_ID and REFRESH_ID.'
+      );
+    }
+
+    const portal = await this.prisma.bitrixPortal.upsert({
+      where: { memberId },
+      create: {
+        memberId,
+        domain,
+        appStatus: payload.status?.trim() || 'INSTALLED'
+      },
+      update: {
+        domain,
+        appStatus: payload.status?.trim() || 'INSTALLED',
+        uninstalledAt: null
+      }
+    });
+
+    const latestToken = await this.prisma.bitrixToken.findFirst({
+      where: { portalId: portal.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const tokenData = {
+      accessToken,
+      refreshToken,
+      expiresAt: this.resolveExpiresAt(payload),
+      scope: payload.scope?.trim() || null
+    };
+
+    if (latestToken) {
+      await this.prisma.bitrixToken.update({
+        where: { id: latestToken.id },
+        data: tokenData
+      });
+    } else {
+      await this.prisma.bitrixToken.create({
+        data: {
+          portalId: portal.id,
+          ...tokenData
+        }
+      });
+    }
+
+    return {
+      success: true,
+      portalDomain: portal.domain,
+      memberId: portal.memberId,
+      tokenExpiresAt: tokenData.expiresAt.toISOString()
+    };
+  }
+
+  async getStatus() {
     const appPublicUrl = this.configService.get<string>('APP_PUBLIC_URL') ?? null;
     const webPublicUrl = this.configService.get<string>('WEB_PUBLIC_URL') ?? null;
     const portalDomain = this.configService.get<string>('BITRIX_PORTAL_DOMAIN') ?? null;
     const webhookUrl = this.configService.get<string>('BITRIX_WEBHOOK_URL') ?? null;
+    const clientId = this.configService.get<string>('BITRIX_CLIENT_ID') ?? null;
+    const clientSecret = this.configService.get<string>('BITRIX_CLIENT_SECRET') ?? null;
+    const savedPortal = await this.findSavedPortal(portalDomain ?? undefined);
+    const latestToken = savedPortal
+      ? await this.prisma.bitrixToken.findFirst({
+          where: { portalId: savedPortal.id },
+          orderBy: { createdAt: 'desc' }
+        })
+      : null;
 
     return {
       configured: Boolean(appPublicUrl && webPublicUrl),
@@ -43,11 +122,19 @@ export class BitrixPlacementService {
       webPublicUrl,
       portalDomain,
       handlerUrl: appPublicUrl ? `${appPublicUrl.replace(/\/+$/, '')}/bitrix/deal-tab` : null,
-      webhookConfigured: Boolean(webhookUrl)
+      clientIdConfigured: Boolean(clientId),
+      clientSecretConfigured: Boolean(clientSecret),
+      savedPortalExists: Boolean(savedPortal),
+      accessTokenExists: Boolean(latestToken?.accessToken),
+      refreshTokenExists: Boolean(latestToken?.refreshToken),
+      tokenExpiresAt: latestToken?.expiresAt.toISOString() ?? null,
+      webhookConfigured: Boolean(webhookUrl),
+      webhookUsedForPlacementBind: false
     };
   }
 
-  async bindDealTab(authInput?: BindAuthInput) {
+  async bindDealTab(domain?: string) {
+    const auth = await this.getPortalAuth(domain);
     return this.callBitrixMethod(
       'placement.bind',
       {
@@ -56,42 +143,158 @@ export class BitrixPlacementService {
         TITLE: TITLE,
         DESCRIPTION: DESCRIPTION
       },
-      authInput
+      auth
     );
   }
 
-  async unbindDealTab(authInput?: BindAuthInput) {
+  async unbindDealTab(domain?: string) {
+    const auth = await this.getPortalAuth(domain);
     return this.callBitrixMethod(
       'placement.unbind',
       {
         PLACEMENT: PLACEMENT,
         HANDLER: this.getHandlerUrl()
       },
-      authInput
+      auth
     );
   }
 
-  async getPlacementBindings(authInput?: BindAuthInput) {
-    return this.callBitrixMethod('placement.get', {}, authInput);
+  async getPlacementBindings(domain?: string) {
+    const auth = await this.getPortalAuth(domain);
+    return this.callBitrixMethod('placement.get', {}, auth);
   }
 
   private async callBitrixMethod(
     method: string,
     params: Record<string, unknown>,
-    authInput?: BindAuthInput
+    authInput: { domain: string; accessToken: string }
   ) {
-    const webhookUrl = this.configService.get<string>('BITRIX_WEBHOOK_URL')?.trim();
-    if (webhookUrl) {
-      // DEV ONLY: webhook mode for local testing without full OAuth flow.
-      return this.bitrixRestClient.callWebhook(webhookUrl, method, params);
+    return this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
+  }
+
+  private async getPortalAuth(
+    requestedDomain?: string
+  ): Promise<{ domain: string; accessToken: string }> {
+    const portal = await this.findSavedPortal(requestedDomain);
+    if (!portal) {
+      throw new BadRequestException(
+        'Bitrix app is not installed yet. Open local app install URL in Bitrix24.'
+      );
     }
 
-    const domain = authInput?.domain?.trim();
-    const accessToken = authInput?.accessToken?.trim();
-    if (domain && accessToken) {
-      return this.bitrixRestClient.callMethod(domain, accessToken, method, params);
+    const latestToken = await this.prisma.bitrixToken.findFirst({
+      where: { portalId: portal.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!latestToken) {
+      throw new BadRequestException(
+        'Bitrix app is not installed yet. Open local app install URL in Bitrix24.'
+      );
     }
 
-    throw new BadRequestException('BITRIX_WEBHOOK_URL is not configured');
+    if (latestToken.expiresAt.getTime() <= Date.now() + 60_000) {
+      const refreshed = await this.refreshPortalToken(portal.id, latestToken.refreshToken);
+      return {
+        domain: portal.domain,
+        accessToken: refreshed.accessToken
+      };
+    }
+
+    return {
+      domain: portal.domain,
+      accessToken: latestToken.accessToken
+    };
+  }
+
+  private async refreshPortalToken(
+    portalId: string,
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date }> {
+    const clientId = this.configService.get<string>('BITRIX_CLIENT_ID')?.trim();
+    const clientSecret = this.configService.get<string>('BITRIX_CLIENT_SECRET')?.trim();
+
+    if (!clientId || !clientSecret) {
+      throw new InternalServerErrorException(
+        'BITRIX_CLIENT_ID and BITRIX_CLIENT_SECRET must be configured for token refresh'
+      );
+    }
+
+    const refreshed = await this.bitrixRestClient.refreshAccessToken({
+      clientId,
+      clientSecret,
+      refreshToken
+    });
+
+    const latestToken = await this.prisma.bitrixToken.findFirst({
+      where: { portalId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!latestToken) {
+      throw new NotFoundException('Saved Bitrix token not found');
+    }
+
+    const expiresAt = this.resolveExpiresAt({
+      expires: refreshed.expires ?? refreshed.expires_in
+    });
+
+    await this.prisma.bitrixToken.update({
+      where: { id: latestToken.id },
+      data: {
+        accessToken: refreshed.access_token,
+        refreshToken: refreshed.refresh_token,
+        expiresAt,
+        scope: refreshed.scope ?? latestToken.scope
+      }
+    });
+
+    const nextAccessToken = refreshed.access_token;
+    const nextRefreshToken = refreshed.refresh_token;
+
+    if (!nextAccessToken || !nextRefreshToken) {
+      throw new InternalServerErrorException('Bitrix OAuth refresh response is incomplete');
+    }
+
+    return {
+      accessToken: nextAccessToken,
+      refreshToken: nextRefreshToken,
+      expiresAt
+    };
+  }
+
+  private async findSavedPortal(requestedDomain?: string) {
+    const configuredDomain =
+      requestedDomain?.trim() || this.configService.get<string>('BITRIX_PORTAL_DOMAIN')?.trim();
+
+    if (configuredDomain) {
+      return this.prisma.bitrixPortal.findUnique({
+        where: { domain: configuredDomain }
+      });
+    }
+
+    return this.prisma.bitrixPortal.findFirst({
+      orderBy: { updatedAt: 'desc' }
+    });
+  }
+
+  private resolveExpiresAt(payload: {
+    AUTH_EXPIRES?: string | number;
+    expires?: string | number;
+    expires_at?: string | number;
+  }) {
+    if (payload.expires_at !== undefined) {
+      const raw = Number(payload.expires_at);
+      if (Number.isFinite(raw) && raw > 0) {
+        return raw > 1_000_000_000_000 ? new Date(raw) : new Date(raw * 1000);
+      }
+    }
+
+    const expiresSeconds = Number(payload.AUTH_EXPIRES ?? payload.expires ?? 3600);
+    if (Number.isFinite(expiresSeconds) && expiresSeconds > 0) {
+      return new Date(Date.now() + expiresSeconds * 1000);
+    }
+
+    return new Date(Date.now() + 3600 * 1000);
   }
 }

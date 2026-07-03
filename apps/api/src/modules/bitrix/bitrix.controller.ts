@@ -13,11 +13,15 @@ type BitrixInstallPayload = {
   member_id?: string;
   DOMAIN?: string;
   PLACEMENT?: string;
+  AUTH_EXPIRES?: string | number;
+  expires?: string | number;
+  expires_at?: string | number;
+  scope?: string;
+  status?: string;
 };
 
 type PlacementAuthPayload = {
   domain?: string;
-  accessToken?: string;
 };
 
 @Controller('bitrix')
@@ -29,8 +33,8 @@ export class BitrixController {
 
   @Get('install')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  installInfo() {
-    const status = this.bitrixPlacementService.getStatus();
+  async installInfo() {
+    const status = await this.bitrixPlacementService.getStatus();
     const bindEndpoint = '/bitrix/placement/bind';
 
     return `<!doctype html>
@@ -51,10 +55,15 @@ export class BitrixController {
   <body>
     <div class="box">
       <h1>Приложение Калькулятор перевозки</h1>
-      <p>Проверьте публичный backend URL и зарегистрируйте вкладку сделки.</p>
+      <p>Проверьте публичный backend URL, установите локальное приложение Bitrix24 и зарегистрируйте вкладку сделки.</p>
       <p>APP_PUBLIC_URL: <strong>${status.appPublicUrl ?? 'not configured'}</strong></p>
       <p>WEB_PUBLIC_URL: <strong>${status.webPublicUrl ?? 'not configured'}</strong></p>
-      <p>WEBHOOK mode (DEV ONLY): <strong>${status.webhookConfigured ? 'enabled' : 'disabled'}</strong></p>
+      <p>BITRIX_CLIENT_ID: <strong>${status.clientIdConfigured ? 'configured' : 'missing'}</strong></p>
+      <p>BITRIX_CLIENT_SECRET: <strong>${status.clientSecretConfigured ? 'configured' : 'missing'}</strong></p>
+      <p>Saved portal: <strong>${status.savedPortalExists ? 'yes' : 'no'}</strong></p>
+      <p>Access token: <strong>${status.accessTokenExists ? 'saved' : 'missing'}</strong></p>
+      <p>Refresh token: <strong>${status.refreshTokenExists ? 'saved' : 'missing'}</strong></p>
+      <p>WEBHOOK mode (legacy): <strong>${status.webhookConfigured ? 'configured but not used for placement.bind' : 'not configured'}</strong></p>
       <p class="${status.configured ? 'ok' : 'warn'}">
         Env status: ${status.configured ? 'configured' : 'configure APP_PUBLIC_URL and WEB_PUBLIC_URL'}
       </p>
@@ -68,12 +77,8 @@ export class BitrixController {
   }
 
   @Post('install')
-  install(@Body() body: BitrixInstallPayload) {
-    return {
-      success: true,
-      received: body,
-      todo: 'Persist portal and token data in PostgreSQL'
-    };
+  async install(@Body() body: BitrixInstallPayload) {
+    return this.bitrixPlacementService.installApp(body);
   }
 
   @Get('deal-tab')
@@ -121,24 +126,18 @@ export class BitrixController {
 
   @Post('placement/bind')
   async placementBind(@Body() body: PlacementAuthPayload) {
-    const result = await this.bitrixPlacementService.bindDealTab({
-      domain: body.domain,
-      accessToken: body.accessToken
-    });
+    const result = await this.bitrixPlacementService.bindDealTab(body.domain);
     return { success: true, result };
   }
 
   @Post('placement/unbind')
   async placementUnbind(@Body() body: PlacementAuthPayload) {
-    const result = await this.bitrixPlacementService.unbindDealTab({
-      domain: body.domain,
-      accessToken: body.accessToken
-    });
+    const result = await this.bitrixPlacementService.unbindDealTab(body.domain);
     return { success: true, result };
   }
 
   @Get('placement/status')
-  placementStatus() {
+  async placementStatus() {
     return this.bitrixPlacementService.getStatus();
   }
 
