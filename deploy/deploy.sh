@@ -10,6 +10,9 @@ cd "${PROJECT_ROOT}"
 echo "==> Pull latest changes"
 git pull
 
+echo "==> Reset installed dependencies"
+rm -rf node_modules
+
 echo "==> Install dependencies"
 npm install
 
