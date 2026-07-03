@@ -21,9 +21,11 @@ type BitrixInstallPayload = {
   DOMAIN?: string;
   domain?: string;
   SERVER_ENDPOINT?: string;
+  client_endpoint?: string;
   AUTH_EXPIRES?: string | number;
   expires?: string | number;
   expires_at?: string | number;
+  APPLICATION_SCOPE?: string;
   scope?: string;
   status?: string;
   auth?: {
@@ -49,6 +51,11 @@ type NormalizedInstallPayload = {
   receivedAuthKeys: string[];
 };
 
+type BitrixInstallRequestContext = {
+  referer?: string;
+  origin?: string;
+};
+
 @Injectable()
 export class BitrixPlacementService {
   private readonly logger = new Logger(BitrixPlacementService.name);
@@ -68,8 +75,11 @@ export class BitrixPlacementService {
     return `${normalized}/bitrix/deal-tab`;
   }
 
-  async installApp(payload: BitrixInstallPayload | Record<string, unknown>) {
-    const normalized = this.normalizeInstallPayload(payload);
+  async installApp(
+    payload: BitrixInstallPayload | Record<string, unknown>,
+    requestContext?: BitrixInstallRequestContext
+  ) {
+    const normalized = this.normalizeInstallPayload(payload, requestContext);
 
     this.logger.log(
       `Bitrix install payload received: keys=${JSON.stringify(normalized.receivedKeys)}, authKeys=${JSON.stringify(normalized.receivedAuthKeys)}`
@@ -194,6 +204,8 @@ export class BitrixPlacementService {
       accessTokenExists: Boolean(latestToken?.accessToken),
       refreshTokenExists: Boolean(latestToken?.refreshToken),
       tokenExpiresAt: latestToken?.expiresAt.toISOString() ?? null,
+      applicationScope: latestToken?.scope ?? null,
+      placementScopeIncluded: this.hasPlacementScope(latestToken?.scope),
       webhookConfigured: Boolean(webhookUrl),
       webhookUsedForPlacementBind: false
     };
@@ -201,16 +213,21 @@ export class BitrixPlacementService {
 
   async bindDealTab(domain?: string) {
     const auth = await this.getPortalAuth(domain);
-    return this.callBitrixMethod(
-      'placement.bind',
-      {
-        PLACEMENT: PLACEMENT,
-        HANDLER: this.getHandlerUrl(),
-        TITLE: TITLE,
-        DESCRIPTION: DESCRIPTION
-      },
-      auth
-    );
+    this.assertPlacementScope(auth.scope);
+    try {
+      return await this.callBitrixMethod(
+        'placement.bind',
+        {
+          PLACEMENT: PLACEMENT,
+          HANDLER: this.getHandlerUrl(),
+          TITLE: TITLE,
+          DESCRIPTION: DESCRIPTION
+        },
+        auth
+      );
+    } catch (error) {
+      throw this.mapPlacementError(error);
+    }
   }
 
   async unbindDealTab(domain?: string) {
@@ -240,7 +257,7 @@ export class BitrixPlacementService {
 
   private async getPortalAuth(
     requestedDomain?: string
-  ): Promise<{ domain: string; accessToken: string }> {
+  ): Promise<{ domain: string; accessToken: string; scope?: string | null }> {
     const portal = await this.findSavedPortal(requestedDomain);
     if (!portal) {
       throw new BadRequestException(
@@ -263,20 +280,22 @@ export class BitrixPlacementService {
       const refreshed = await this.refreshPortalToken(portal.id, latestToken.refreshToken);
       return {
         domain: portal.domain,
-        accessToken: refreshed.accessToken
+        accessToken: refreshed.accessToken,
+        scope: refreshed.scope
       };
     }
 
     return {
       domain: portal.domain,
-      accessToken: latestToken.accessToken
+      accessToken: latestToken.accessToken,
+      scope: latestToken.scope
     };
   }
 
   private async refreshPortalToken(
     portalId: string,
     refreshToken: string
-  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date }> {
+  ): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date; scope?: string | null }> {
     const clientId = this.configService.get<string>('BITRIX_CLIENT_ID')?.trim();
     const clientSecret = this.configService.get<string>('BITRIX_CLIENT_SECRET')?.trim();
 
@@ -325,7 +344,8 @@ export class BitrixPlacementService {
     return {
       accessToken: nextAccessToken,
       refreshToken: nextRefreshToken,
-      expiresAt
+      expiresAt,
+      scope: refreshed.scope ?? latestToken.scope
     };
   }
 
@@ -365,20 +385,18 @@ export class BitrixPlacementService {
   }
 
   private normalizeInstallPayload(
-    payload: BitrixInstallPayload | Record<string, unknown>
+    payload: BitrixInstallPayload | Record<string, unknown>,
+    requestContext?: BitrixInstallRequestContext
   ): NormalizedInstallPayload {
     const source = (payload ?? {}) as BitrixInstallPayload;
     const auth =
       source.auth && typeof source.auth === 'object' && !Array.isArray(source.auth)
         ? source.auth
         : undefined;
+    const resolvedDomain = this.resolveInstallDomain(source, auth, requestContext);
 
     return {
-      domain:
-        this.readString(source.DOMAIN) ??
-        this.readString(source.domain) ??
-        this.readString(auth?.domain) ??
-        this.extractDomainFromServerEndpoint(source.SERVER_ENDPOINT),
+      domain: resolvedDomain,
       memberId:
         this.readString(source.member_id) ??
         this.readString(source.MEMBER_ID) ??
@@ -389,11 +407,40 @@ export class BitrixPlacementService {
         this.readString(source.REFRESH_ID) ?? this.readString(auth?.refresh_token),
       expires: source.AUTH_EXPIRES ?? auth?.expires ?? source.expires,
       expiresAt: source.expires_at,
-      scope: this.readString(source.scope) ?? this.readString(auth?.scope),
+      scope:
+        this.readString(source.APPLICATION_SCOPE) ??
+        this.readString(source.scope) ??
+        this.readString(auth?.scope),
       status: this.readString(source.status),
       receivedKeys: Object.keys(source),
       receivedAuthKeys: auth ? Object.keys(auth) : []
     };
+  }
+
+  private resolveInstallDomain(
+    source: BitrixInstallPayload,
+    auth: BitrixInstallPayload['auth'],
+    requestContext?: BitrixInstallRequestContext
+  ) {
+    const candidates = [
+      this.readString(source.DOMAIN),
+      this.readString(source.domain),
+      this.extractDomainFromServerEndpoint(source.SERVER_ENDPOINT),
+      this.extractDomainFromServerEndpoint(source.client_endpoint),
+      this.readString(auth?.domain),
+      this.extractDomainFromRefererOrOrigin(requestContext?.referer),
+      this.extractDomainFromRefererOrOrigin(requestContext?.origin),
+      this.readString(this.configService.get<string>('BITRIX_PORTAL_DOMAIN'))
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizePortalDomain(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return undefined;
   }
 
   private readString(value: unknown) {
@@ -423,5 +470,66 @@ export class BitrixPlacementService {
         .split('/')[0]
         .trim() || undefined;
     }
+  }
+
+  private extractDomainFromRefererOrOrigin(value?: string) {
+    const domain = this.extractDomainFromServerEndpoint(value);
+    return this.normalizePortalDomain(domain);
+  }
+
+  private normalizePortalDomain(value?: string) {
+    const domain = this.readString(value);
+    if (!domain) {
+      return undefined;
+    }
+
+    const normalized = domain
+      .replace(/^https?:\/\//i, '')
+      .replace(/^\/+/, '')
+      .split('/')[0]
+      .trim()
+      .toLowerCase();
+
+    if (!normalized || normalized === 'oauth.bitrix24.tech') {
+      return undefined;
+    }
+
+    return normalized;
+  }
+
+  private hasPlacementScope(scope?: string | null) {
+    if (!scope) {
+      return false;
+    }
+
+    const normalized = scope
+      .split(/[,\s]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+
+    return normalized.includes('placement');
+  }
+
+  private assertPlacementScope(scope?: string | null) {
+    if (this.hasPlacementScope(scope)) {
+      return;
+    }
+
+    throw new BadRequestException(
+      'В локальном приложении Bitrix24 нужно добавить scope placement / Встраивание приложений и переустановить приложение'
+    );
+  }
+
+  private mapPlacementError(error: unknown) {
+    if (
+      error instanceof Error &&
+      /higher privileges than provided by the access token/i.test(error.message)
+    ) {
+      return new BadRequestException(
+        'В локальном приложении Bitrix24 нужно добавить scope placement / Встраивание приложений и переустановить приложение'
+      );
+    }
+
+    return error;
   }
 }

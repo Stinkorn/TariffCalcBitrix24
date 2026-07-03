@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, Post, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   detectDomain,
@@ -11,11 +11,16 @@ type BitrixInstallPayload = {
   AUTH_ID?: string;
   REFRESH_ID?: string;
   member_id?: string;
+  MEMBER_ID?: string;
   DOMAIN?: string;
+  domain?: string;
+  SERVER_ENDPOINT?: string;
+  client_endpoint?: string;
   PLACEMENT?: string;
   AUTH_EXPIRES?: string | number;
   expires?: string | number;
   expires_at?: string | number;
+  APPLICATION_SCOPE?: string;
   scope?: string;
   status?: string;
 };
@@ -63,6 +68,7 @@ export class BitrixController {
       <p>Saved portal: <strong>${status.savedPortalExists ? 'yes' : 'no'}</strong></p>
       <p>Access token: <strong>${status.accessTokenExists ? 'saved' : 'missing'}</strong></p>
       <p>Refresh token: <strong>${status.refreshTokenExists ? 'saved' : 'missing'}</strong></p>
+      <p>Application scope: <strong>${status.applicationScope ?? 'missing'}</strong></p>
       <p>WEBHOOK mode (legacy): <strong>${status.webhookConfigured ? 'configured but not used for placement.bind' : 'not configured'}</strong></p>
       <p class="${status.configured ? 'ok' : 'warn'}">
         Env status: ${status.configured ? 'configured' : 'configure APP_PUBLIC_URL and WEB_PUBLIC_URL'}
@@ -77,8 +83,12 @@ export class BitrixController {
   }
 
   @Post('install')
-  async install(@Body() body: BitrixInstallPayload) {
-    return this.bitrixPlacementService.installApp(body);
+  async install(
+    @Body() body: BitrixInstallPayload,
+    @Headers('referer') referer?: string,
+    @Headers('origin') origin?: string
+  ) {
+    return this.bitrixPlacementService.installApp(body, { referer, origin });
   }
 
   @Get('deal-tab')

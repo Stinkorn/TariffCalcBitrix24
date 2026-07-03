@@ -29,18 +29,26 @@ BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
 - `DOMAIN`
 - `domain`
 - `SERVER_ENDPOINT`
+- `client_endpoint`
 - `member_id`
 - `MEMBER_ID`
 - `AUTH_ID`
 - `REFRESH_ID`
 - `AUTH_EXPIRES`
+- `APPLICATION_SCOPE`
 - `auth.access_token`
 - `auth.refresh_token`
 - `auth.expires`
 - `auth.domain`
 - `auth.member_id`
 
-Если `DOMAIN/domain` отсутствует, backend извлекает домен портала из `SERVER_ENDPOINT`.
+Если `DOMAIN/domain` отсутствует, backend пытается определить реальный портал в таком порядке:
+
+- `SERVER_ENDPOINT`, если там домен портала
+- `client_endpoint`
+- `auth.domain`
+- HTTP headers `referer` / `origin`
+- `BITRIX_PORTAL_DOMAIN`
 
 Пример:
 
@@ -54,6 +62,8 @@ domain=novikgroup.bitrix24.ru
 - с `https://`
 - без схемы
 - со слешем на конце
+
+`oauth.bitrix24.tech` не сохраняется как `portalDomain`. Если install payload приходит через oauth-host, backend берет реальный домен из других источников или использует `BITRIX_PORTAL_DOMAIN`.
 
 Токены сохраняются сервером и затем используются для:
 
@@ -72,6 +82,8 @@ domain=novikgroup.bitrix24.ru
 - `accessTokenExists`
 - `refreshTokenExists`
 - `tokenExpiresAt`
+- `applicationScope`
+- `placementScopeIncluded`
 - `webhookConfigured`
 - `webhookUsedForPlacementBind`
 
@@ -100,6 +112,18 @@ domain=novikgroup.bitrix24.ru
 - `TITLE=Тарифный калькулятор`
 
 Если `access_token` истек, backend автоматически пытается обновить его по `refresh_token`.
+
+Перед `placement.bind` backend проверяет, что у установленного приложения есть scope `placement`.
+
+Если scope отсутствует или Bitrix возвращает ошибку прав `higher privileges than provided by the access token`, backend возвращает понятную ошибку:
+
+```json
+{
+  "message": "В локальном приложении Bitrix24 нужно добавить scope placement / Встраивание приложений и переустановить приложение",
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
 
 ## После деплоя
 
