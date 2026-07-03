@@ -6,6 +6,8 @@ import * as classTransformer from 'class-transformer';
 import * as classValidator from 'class-validator';
 import { AppModule } from './modules/app.module';
 
+const express = require('express');
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, new ExpressAdapter());
   const configService = app.get(ConfigService);
@@ -15,6 +17,8 @@ async function bootstrap() {
     configService.get<string>('WEB_ORIGIN', 'http://localhost:5173');
 
   app.enableCors({ origin: webOrigin });
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

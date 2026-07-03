@@ -47,8 +47,6 @@ export function detectDomain(source: AnyRecord): string | null {
     source.domain ??
     source.portalDomain ??
     source.portal_domain ??
-    source.member_id ??
-    source.MEMBER_ID ??
     null;
 
   if (domainValue === null || domainValue === undefined || domainValue === '') {
@@ -59,7 +57,15 @@ export function detectDomain(source: AnyRecord): string | null {
 }
 
 export function sanitizeContext(source: AnyRecord): AnyRecord {
-  const blockedKeys = ['auth_id', 'refresh_id', 'access_token', 'refresh_token', 'database_url'];
+  const blockedKeys = [
+    'app_sid',
+    'application_token',
+    'auth_id',
+    'refresh_id',
+    'access_token',
+    'refresh_token',
+    'database_url'
+  ];
 
   const result: AnyRecord = {};
   for (const [key, value] of Object.entries(source)) {
