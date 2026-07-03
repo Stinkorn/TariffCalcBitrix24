@@ -139,9 +139,19 @@ export class BitrixController {
     return this.bitrixPlacementService.bindDealTab(body.domain);
   }
 
+  @Post('placement/bind-debug')
+  async placementBindDebug(@Body() body: PlacementAuthPayload) {
+    return this.bitrixPlacementService.bindDebugPlacement(body.domain);
+  }
+
   @Post('placement/unbind')
   async placementUnbind(@Body() body: PlacementAuthPayload) {
     return this.bitrixPlacementService.unbindDealTab(body.domain);
+  }
+
+  @Post('placement/unbind-debug')
+  async placementUnbindDebug(@Body() body: PlacementAuthPayload) {
+    return this.bitrixPlacementService.unbindDebugPlacement(body.domain);
   }
 
   @Get('placement/list')

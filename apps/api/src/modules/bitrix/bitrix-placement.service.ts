@@ -9,9 +9,19 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixRestClient } from './bitrix-rest.client';
 
-const PLACEMENT = 'CRM_DEAL_DETAIL_TAB';
-const TITLE = 'Тарифный калькулятор';
-const DESCRIPTION = 'Расчет стоимости перевозки по тарифам';
+const PRIMARY_PLACEMENT = {
+  placement: 'CRM_DEAL_DETAIL_TAB',
+  title: 'Тарифный калькулятор',
+  description: 'Расчет стоимости перевозки по тарифам'
+} as const;
+
+const DEBUG_PLACEMENT = {
+  placement: 'CRM_DEAL_DETAIL_ACTIVITY',
+  title: 'Тест калькулятора',
+  description: 'Диагностическая привязка тарифного калькулятора'
+} as const;
+
+type PlacementConfig = typeof PRIMARY_PLACEMENT | typeof DEBUG_PLACEMENT;
 
 type BitrixPlacementAuth = {
   domain: string;
@@ -218,6 +228,38 @@ export class BitrixPlacementService {
   }
 
   async bindDealTab(domain?: string) {
+    return this.bindPlacement(PRIMARY_PLACEMENT, domain);
+  }
+
+  async bindDebugPlacement(domain?: string) {
+    return this.bindPlacement(DEBUG_PLACEMENT, domain);
+  }
+
+  async unbindDealTab(domain?: string) {
+    return this.unbindPlacement(PRIMARY_PLACEMENT, domain);
+  }
+
+  async unbindDebugPlacement(domain?: string) {
+    return this.unbindPlacement(DEBUG_PLACEMENT, domain);
+  }
+
+  async getPlacementBindings(domain?: string) {
+    const auth = await this.getPortalAuth(domain);
+    const handler = this.getHandlerUrl();
+    const result = await this.callBitrixMethod('placement.get', {}, auth);
+    return {
+      success: true,
+      placements: [PRIMARY_PLACEMENT, DEBUG_PLACEMENT].map((config) => ({
+        placement: config.placement,
+        handler,
+        title: config.title
+      })),
+      portalDomain: auth.domain,
+      result
+    };
+  }
+
+  private async bindPlacement(config: PlacementConfig, domain?: string) {
     const auth = await this.getPortalAuth(domain);
     this.assertPlacementScope(auth.scope);
     const handler = this.getHandlerUrl();
@@ -225,10 +267,10 @@ export class BitrixPlacementService {
       const result = await this.callBitrixMethod(
         'placement.bind',
         {
-          PLACEMENT: PLACEMENT,
+          PLACEMENT: config.placement,
           HANDLER: handler,
-          TITLE: TITLE,
-          DESCRIPTION: DESCRIPTION
+          TITLE: config.title,
+          DESCRIPTION: config.description
         },
         auth
       );
@@ -237,14 +279,14 @@ export class BitrixPlacementService {
         success: true,
         alreadyBound: false,
         message: 'Placement handler bound successfully',
-        placement: PLACEMENT,
+        placement: config.placement,
         handler,
-        title: TITLE,
+        title: config.title,
         portalDomain: auth.domain,
         result
       };
     } catch (error) {
-      const mapped = this.mapPlacementError(error, auth.domain, handler);
+      const mapped = this.mapPlacementError(error, auth.domain, handler, config);
       if (mapped) {
         return mapped;
       }
@@ -252,13 +294,13 @@ export class BitrixPlacementService {
     }
   }
 
-  async unbindDealTab(domain?: string) {
+  private async unbindPlacement(config: PlacementConfig, domain?: string) {
     const auth = await this.getPortalAuth(domain);
     const handler = this.getHandlerUrl();
     const result = await this.callBitrixMethod(
       'placement.unbind',
       {
-        PLACEMENT: PLACEMENT,
+        PLACEMENT: config.placement,
         HANDLER: handler
       },
       auth
@@ -266,20 +308,8 @@ export class BitrixPlacementService {
 
     return {
       success: true,
-      placement: PLACEMENT,
+      placement: config.placement,
       handler,
-      portalDomain: auth.domain,
-      result
-    };
-  }
-
-  async getPlacementBindings(domain?: string) {
-    const auth = await this.getPortalAuth(domain);
-    const result = await this.callBitrixMethod('placement.get', {}, auth);
-    return {
-      success: true,
-      placement: PLACEMENT,
-      handler: this.getHandlerUrl(),
       portalDomain: auth.domain,
       result
     };
@@ -558,7 +588,12 @@ export class BitrixPlacementService {
     );
   }
 
-  private mapPlacementError(error: unknown, portalDomain: string, handler: string) {
+  private mapPlacementError(
+    error: unknown,
+    portalDomain: string,
+    handler: string,
+    config: PlacementConfig
+  ) {
     if (
       error instanceof Error &&
       /handler already binded/i.test(error.message)
@@ -567,9 +602,9 @@ export class BitrixPlacementService {
         success: true,
         alreadyBound: true,
         message: 'Placement handler is already bound',
-        placement: PLACEMENT,
+        placement: config.placement,
         handler,
-        title: TITLE,
+        title: config.title,
         portalDomain
       };
     }
