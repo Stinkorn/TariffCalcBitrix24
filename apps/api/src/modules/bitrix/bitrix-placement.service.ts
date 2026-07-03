@@ -20,6 +20,7 @@ type BitrixInstallPayload = {
   MEMBER_ID?: string;
   DOMAIN?: string;
   domain?: string;
+  SERVER_ENDPOINT?: string;
   AUTH_EXPIRES?: string | number;
   expires?: string | number;
   expires_at?: string | number;
@@ -89,7 +90,7 @@ export class BitrixPlacementService {
     if (missingRequiredFields.length > 0) {
       throw new BadRequestException({
         message:
-          'Bitrix install payload is incomplete. Expected DOMAIN/domain, member_id/MEMBER_ID, AUTH_ID/auth.access_token and REFRESH_ID/auth.refresh_token.',
+          'Bitrix install payload is incomplete. Expected DOMAIN/domain/SERVER_ENDPOINT, member_id/MEMBER_ID, AUTH_ID/auth.access_token and REFRESH_ID/auth.refresh_token.',
         error: 'Bad Request',
         statusCode: 400,
         receivedKeys: normalized.receivedKeys,
@@ -373,7 +374,11 @@ export class BitrixPlacementService {
         : undefined;
 
     return {
-      domain: this.readString(source.DOMAIN) ?? this.readString(source.domain) ?? this.readString(auth?.domain),
+      domain:
+        this.readString(source.DOMAIN) ??
+        this.readString(source.domain) ??
+        this.readString(auth?.domain) ??
+        this.extractDomainFromServerEndpoint(source.SERVER_ENDPOINT),
       memberId:
         this.readString(source.member_id) ??
         this.readString(source.MEMBER_ID) ??
@@ -398,5 +403,25 @@ export class BitrixPlacementService {
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private extractDomainFromServerEndpoint(value: unknown) {
+    const endpoint = this.readString(value);
+    if (!endpoint) {
+      return undefined;
+    }
+
+    const normalized = endpoint.includes('://') ? endpoint : `https://${endpoint}`;
+
+    try {
+      const url = new URL(normalized);
+      return url.hostname || undefined;
+    } catch {
+      return endpoint
+        .replace(/^https?:\/\//i, '')
+        .replace(/^\/+/, '')
+        .split('/')[0]
+        .trim() || undefined;
+    }
   }
 }

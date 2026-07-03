@@ -28,6 +28,7 @@ BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
 
 - `DOMAIN`
 - `domain`
+- `SERVER_ENDPOINT`
 - `member_id`
 - `MEMBER_ID`
 - `AUTH_ID`
@@ -38,6 +39,21 @@ BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
 - `auth.expires`
 - `auth.domain`
 - `auth.member_id`
+
+Если `DOMAIN/domain` отсутствует, backend извлекает домен портала из `SERVER_ENDPOINT`.
+
+Пример:
+
+```text
+SERVER_ENDPOINT=https://novikgroup.bitrix24.ru/rest/
+domain=novikgroup.bitrix24.ru
+```
+
+Поддерживаются варианты `SERVER_ENDPOINT`:
+
+- с `https://`
+- без схемы
+- со слешем на конце
 
 Токены сохраняются сервером и затем используются для:
 
