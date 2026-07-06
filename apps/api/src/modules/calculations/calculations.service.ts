@@ -11,6 +11,9 @@ export class CalculationsService {
       data: {
         portalDomain: payload.portalDomain ?? null,
         dealId: payload.dealId ?? null,
+        counterpartyId: payload.counterpartyId ?? null,
+        counterpartyType: payload.counterpartyType ?? null,
+        counterpartyName: payload.counterpartyName ?? null,
         routeType: payload.routeType ?? null,
         origin: payload.origin,
         destination: payload.destination,

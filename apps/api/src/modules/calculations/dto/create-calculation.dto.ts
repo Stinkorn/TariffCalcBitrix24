@@ -40,6 +40,18 @@ export class CreateCalculationDto {
 
   @IsOptional()
   @IsString()
+  counterpartyId?: string;
+
+  @IsOptional()
+  @IsString()
+  counterpartyType?: string;
+
+  @IsOptional()
+  @IsString()
+  counterpartyName?: string;
+
+  @IsOptional()
+  @IsString()
   routeType?: string;
 
   @IsString()

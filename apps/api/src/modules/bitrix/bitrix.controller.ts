@@ -123,7 +123,9 @@ export class BitrixController {
         `WEB_PUBLIC_URL: ${status.webPublicUrl ?? 'not configured'}`,
         `BITRIX_CLIENT_ID: ${status.clientIdConfigured ? 'configured' : 'missing'}`,
         `BITRIX_CLIENT_SECRET: ${status.clientSecretConfigured ? 'configured' : 'missing'}`,
-        `Placement scope: ${status.applicationScope ?? 'missing'}`
+        `Application scope: ${status.applicationScope ?? 'missing'}`,
+        `Placement scope included: ${status.placementScopeIncluded ? 'yes' : 'no'}`,
+        `Lists scope included: ${status.listsScopeIncluded ? 'yes' : 'no'}`
       ]
     });
   }
@@ -270,6 +272,14 @@ export class BitrixController {
     @Body() body: TimelineCommentBody
   ) {
     return this.bitrixPlacementService.addDealTimelineComment(dealId, body);
+  }
+
+  @Get('deals/:dealId/counterparty')
+  async getDealCounterparty(
+    @Param('dealId') dealId: string,
+    @Query('portalDomain') portalDomain?: string
+  ) {
+    return this.bitrixPlacementService.getDealCounterparty(dealId, portalDomain);
   }
 
   @Get('debug/context')

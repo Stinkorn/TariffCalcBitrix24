@@ -40,6 +40,31 @@ npm run dev
 
 `http://localhost:5173/deal-calculator`
 
+## Справочник локаций
+
+Seed базовых городов:
+
+```bash
+curl -X POST http://localhost:9099/dictionaries/locations/seed
+```
+
+Проверка словаря:
+
+```bash
+curl http://localhost:9099/dictionaries/locations
+curl "http://localhost:9099/dictionaries/locations?search=Кал"
+```
+
+Синхронизация из Bitrix24 Universal Lists:
+
+```bash
+curl -X POST http://localhost:9099/dictionaries/locations/sync/bitrix
+```
+
+Калькулятор со сделкой:
+
+`http://localhost:5173/deal-calculator?dealId=TEST-4293&portal=novikgroup.bitrix24.ru`
+
 ## Важные замечания
 
 - Для localhost используйте `APP_PUBLIC_URL=http://localhost:9099`.

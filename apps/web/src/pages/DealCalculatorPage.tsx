@@ -1,14 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-
-type DictionaryBootstrap = {
-  routeTypes: string[];
-  transportTypes: string[];
-  containerTypes: string[];
-  containerStatuses: string[];
-  currencies: string[];
-  marginTypes: string[];
-};
+import { CityAutocomplete } from '../components/CityAutocomplete';
+import { useDictionaries } from '../context/DictionariesContext';
+import type { BitrixLocationSyncResponse } from '../types/dictionaries';
 
 type Services = {
   portHandling: boolean;
@@ -37,6 +31,9 @@ type CalculateResponse = {
 type SavedCalculation = {
   id: string;
   dealId: string | null;
+  counterpartyId: string | null;
+  counterpartyType: string | null;
+  counterpartyName: string | null;
   routeType: string | null;
   origin: string;
   destination: string;
@@ -52,6 +49,13 @@ type TimelineCommentResponse = {
   success: boolean;
   portalDomain: string;
   dealId: string;
+};
+
+type CounterpartyResponse = {
+  dealId: string;
+  type: 'company' | 'contact' | 'unknown';
+  id: string | null;
+  name: string | null;
 };
 
 type FormState = {
@@ -71,25 +75,12 @@ type FormState = {
   services: Services;
 };
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ??
-  import.meta.env.VITE_API_BASE_URL ??
-  'http://localhost:9099';
-
-const EMPTY_DICTIONARIES: DictionaryBootstrap = {
-  routeTypes: ['KLD_OUT', 'KLD_IN'],
-  transportTypes: ['AUTO', 'RAIL', 'SEA', 'MULTIMODAL'],
-  containerTypes: ['20DC', '40DC', '40HC', '20REF', '40REF'],
-  containerStatuses: ['EMPTY', 'LOADED'],
-  currencies: ['EUR', 'USD', 'RUB'],
-  marginTypes: ['percent', 'fixed']
-};
-
 function formatMoney(value: number | string, currency: string) {
   return `${Number(value).toFixed(2)} ${currency}`;
 }
 
 export function DealCalculatorPage() {
+  const { apiBaseUrl, dictionaries, bootstrapError, refreshBootstrap } = useDictionaries();
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
   const initialDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? '';
@@ -119,7 +110,6 @@ export function DealCalculatorPage() {
     [initialDealId, initialDomain]
   );
 
-  const [dictionaries, setDictionaries] = useState<DictionaryBootstrap>(EMPTY_DICTIONARIES);
   const [result, setResult] = useState<CalculateResponse | null>(null);
   const [history, setHistory] = useState<SavedCalculation[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -130,31 +120,32 @@ export function DealCalculatorPage() {
   const [writingTimeline, setWritingTimeline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timelineMessage, setTimelineMessage] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<BitrixLocationSyncResponse | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncingLocations, setSyncingLocations] = useState(false);
+  const [counterparty, setCounterparty] = useState<CounterpartyResponse | null>(null);
+  const [counterpartyError, setCounterpartyError] = useState<string | null>(null);
+  const [counterpartyLoading, setCounterpartyLoading] = useState(false);
 
   useEffect(() => {
-    void loadDictionaries();
     void loadHistory(initialDealId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialDealId]);
 
-  async function loadDictionaries() {
-    try {
-      const response = await fetch(`${API_BASE_URL}/dictionaries/bootstrap`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as DictionaryBootstrap;
-      setDictionaries(data);
-    } catch {
-      setDictionaries(EMPTY_DICTIONARIES);
+  useEffect(() => {
+    if (!initialDealId.trim()) {
+      setCounterparty(null);
+      setCounterpartyError(null);
+      return;
     }
-  }
+
+    void loadCounterparty(initialDealId, initialDomain);
+  }, [initialDealId, initialDomain]);
 
   async function loadHistory(dealId: string) {
     const byDeal = dealId.trim();
     const url = byDeal
-      ? `${API_BASE_URL}/calculations/by-deal/${encodeURIComponent(byDeal)}`
-      : `${API_BASE_URL}/calculations/recent`;
+      ? `${apiBaseUrl}/calculations/by-deal/${encodeURIComponent(byDeal)}`
+      : `${apiBaseUrl}/calculations/recent`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -163,6 +154,46 @@ export function DealCalculatorPage() {
 
     const data = (await response.json()) as SavedCalculation[];
     setHistory(data);
+  }
+
+  async function loadCounterparty(dealId: string, portalDomain: string) {
+    setCounterpartyLoading(true);
+    setCounterpartyError(null);
+
+    try {
+      const search = new URLSearchParams();
+      if (portalDomain.trim()) {
+        search.set('portalDomain', portalDomain.trim());
+      }
+
+      const query = search.toString();
+      const response = await fetch(
+        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(dealId)}/counterparty${query ? `?${query}` : ''}`
+      );
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const payload = (await response.json()) as { message?: string | string[] };
+          if (Array.isArray(payload.message)) {
+            message = payload.message.join('; ');
+          } else if (typeof payload.message === 'string' && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // ignore non-json response body
+        }
+        throw new Error(message);
+      }
+
+      const data = (await response.json()) as CounterpartyResponse;
+      setCounterparty(data);
+    } catch (loadError) {
+      setCounterparty(null);
+      setCounterpartyError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setCounterpartyLoading(false);
+    }
   }
 
   function readBoolean(formData: FormData, field: string) {
@@ -232,7 +263,7 @@ export function DealCalculatorPage() {
     setLastPayload(state);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/calculator/calculate`, {
+      const response = await fetch(`${apiBaseUrl}/calculator/calculate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state)
@@ -268,12 +299,16 @@ export function DealCalculatorPage() {
     setTimelineMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/calculations`, {
+      const response = await fetch(`${apiBaseUrl}/calculations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           portalDomain: lastPayload.portalDomain || undefined,
           dealId: lastPayload.dealId || undefined,
+          counterpartyId: counterparty?.id || undefined,
+          counterpartyType:
+            counterparty && counterparty.type !== 'unknown' ? counterparty.type : undefined,
+          counterpartyName: counterparty?.name || undefined,
           routeType: lastPayload.routeType,
           origin: lastPayload.origin,
           destination: lastPayload.destination,
@@ -310,6 +345,43 @@ export function DealCalculatorPage() {
     }
   }
 
+  async function handleSyncLocationsFromBitrix() {
+    setSyncingLocations(true);
+    setSyncError(null);
+    setSyncResult(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/dictionaries/locations/sync/bitrix`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const payload = (await response.json()) as { message?: string | string[] };
+          if (Array.isArray(payload.message)) {
+            message = payload.message.join('; ');
+          } else if (typeof payload.message === 'string' && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // ignore non-json response
+        }
+        throw new Error(message);
+      }
+
+      const data = (await response.json()) as BitrixLocationSyncResponse;
+      setSyncResult(data);
+      await refreshBootstrap();
+    } catch (syncLocationsError) {
+      setSyncError(
+        syncLocationsError instanceof Error ? syncLocationsError.message : String(syncLocationsError)
+      );
+    } finally {
+      setSyncingLocations(false);
+    }
+  }
+
   async function handleWriteToBitrixDeal() {
     if (!result || !lastPayload.dealId.trim()) {
       return;
@@ -321,7 +393,7 @@ export function DealCalculatorPage() {
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/bitrix/deals/${encodeURIComponent(lastPayload.dealId.trim())}/timeline-comment`,
+        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(lastPayload.dealId.trim())}/timeline-comment`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -349,12 +421,12 @@ export function DealCalculatorPage() {
             message = payload.message;
           }
         } catch {
-          // ignore non-JSON error body
+          // ignore non-json error body
         }
         throw new Error(message);
       }
 
-      await response.json() as TimelineCommentResponse;
+      await (response.json() as Promise<TimelineCommentResponse>);
       setTimelineMessage('Расчет записан в сделку Bitrix24');
     } catch (timelineError) {
       setError(
@@ -372,50 +444,235 @@ export function DealCalculatorPage() {
           <h1>Калькулятор перевозки</h1>
         </header>
 
+        <section className="card compact-card">
+          <div className="counterparty-panel">
+            <span className="counterparty-label">Контрагент</span>
+            <div className="counterparty-value">
+              {counterpartyLoading && <span>Загрузка...</span>}
+              {!counterpartyLoading && counterparty?.name && <b>{counterparty.name}</b>}
+              {!counterpartyLoading && !counterparty?.name && !counterpartyError && <span>Не указан</span>}
+              {!counterpartyLoading && counterpartyError && <span>Контрагент не загружен</span>}
+            </div>
+            {!counterpartyLoading && counterparty?.type && counterparty.type !== 'unknown' && (
+              <span className="counterparty-meta">
+                {counterparty.type === 'company' ? 'Компания' : 'Контакт'}
+                {counterparty.id ? ` #${counterparty.id}` : ''}
+              </span>
+            )}
+          </div>
+        </section>
+
         <form className="grid" onSubmit={handleSubmit}>
           <section className="card">
             <h2>Параметры маршрута</h2>
             <div className="fields two-cols">
-              <label>Тип маршрута<select name="routeType" defaultValue={initialFormState.routeType}>{dictionaries.routeTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Тип транспорта<select name="transportType" defaultValue={initialFormState.transportType}>{dictionaries.transportTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Откуда<input name="origin" defaultValue={initialFormState.origin} required /></label>
-              <label>Куда<input name="destination" defaultValue={initialFormState.destination} required /></label>
-              <label>ID сделки<input name="dealId" defaultValue={initialFormState.dealId} /></label>
-              <label>Домен портала<input name="portalDomain" defaultValue={initialFormState.portalDomain} placeholder="example.bitrix24.ru" /></label>
+              <label>
+                Тип маршрута
+                <select name="routeType" defaultValue={initialFormState.routeType}>
+                  {dictionaries.routeTypes.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Тип транспорта
+                <select name="transportType" defaultValue={initialFormState.transportType}>
+                  {dictionaries.transportTypes.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <CityAutocomplete
+                label="Откуда"
+                name="origin"
+                metadataPrefix="origin"
+                defaultValue={initialFormState.origin}
+                required
+              />
+              <CityAutocomplete
+                label="Куда"
+                name="destination"
+                metadataPrefix="destination"
+                defaultValue={initialFormState.destination}
+                required
+              />
+              <label>
+                ID сделки
+                <input name="dealId" defaultValue={initialFormState.dealId} />
+              </label>
+              <label>
+                Домен портала
+                <input
+                  name="portalDomain"
+                  defaultValue={initialFormState.portalDomain}
+                  placeholder="example.bitrix24.ru"
+                />
+              </label>
             </div>
           </section>
 
           <section className="card">
             <h2>Груз</h2>
             <div className="fields two-cols">
-              <label>Тип контейнера<select name="containerType" defaultValue={initialFormState.containerType}>{dictionaries.containerTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Статус контейнера<select name="containerStatus" defaultValue={initialFormState.containerStatus}>{dictionaries.containerStatuses.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Вес, кг<input name="weightKg" type="number" min="0.001" step="0.001" defaultValue={initialFormState.weightKg} required /></label>
-              <label>Объем, м3<input name="volumeM3" type="number" min="0" step="0.001" defaultValue={initialFormState.volumeM3} required /></label>
-              <label>Валюта<select name="currency" defaultValue={initialFormState.currency}>{dictionaries.currencies.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Маржа - тип<select name="marginType" defaultValue={initialFormState.marginType}>{dictionaries.marginTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Маржа - значение<input name="marginValue" type="number" min="0" step="0.01" defaultValue={initialFormState.marginValue} required /></label>
+              <label>
+                Тип контейнера
+                <select name="containerType" defaultValue={initialFormState.containerType}>
+                  {dictionaries.containerTypes.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Статус контейнера
+                <select name="containerStatus" defaultValue={initialFormState.containerStatus}>
+                  {dictionaries.containerStatuses.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Вес, кг
+                <input
+                  name="weightKg"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  defaultValue={initialFormState.weightKg}
+                  required
+                />
+              </label>
+              <label>
+                Объем, м3
+                <input
+                  name="volumeM3"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  defaultValue={initialFormState.volumeM3}
+                  required
+                />
+              </label>
+              <label>
+                Валюта
+                <select name="currency" defaultValue={initialFormState.currency}>
+                  {dictionaries.currencies.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Маржа - тип
+                <select name="marginType" defaultValue={initialFormState.marginType}>
+                  {dictionaries.marginTypes.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Маржа - значение
+                <input
+                  name="marginValue"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={initialFormState.marginValue}
+                  required
+                />
+              </label>
             </div>
           </section>
 
           <section className="card">
             <h2>Дополнительные услуги</h2>
             <div className="checkboxes">
-              <label><input name="portHandling" type="checkbox" defaultChecked={initialFormState.services.portHandling} /> ПРР</label>
-              <label><input name="storage" type="checkbox" defaultChecked={initialFormState.services.storage} /> хранение</label>
-              <label><input name="reeferConnection" type="checkbox" defaultChecked={initialFormState.services.reeferConnection} /> реф-подключение</label>
-              <label><input name="containerRent" type="checkbox" defaultChecked={initialFormState.services.containerRent} /> аренда контейнера</label>
+              <label>
+                <input
+                  name="portHandling"
+                  type="checkbox"
+                  defaultChecked={initialFormState.services.portHandling}
+                />{' '}
+                ПРР
+              </label>
+              <label>
+                <input
+                  name="storage"
+                  type="checkbox"
+                  defaultChecked={initialFormState.services.storage}
+                />{' '}
+                хранение
+              </label>
+              <label>
+                <input
+                  name="reeferConnection"
+                  type="checkbox"
+                  defaultChecked={initialFormState.services.reeferConnection}
+                />{' '}
+                реф-подключение
+              </label>
+              <label>
+                <input
+                  name="containerRent"
+                  type="checkbox"
+                  defaultChecked={initialFormState.services.containerRent}
+                />{' '}
+                аренда контейнера
+              </label>
             </div>
           </section>
 
           <div className="actions">
-            <button type="submit" disabled={loading}>{loading ? 'Расчет...' : 'Рассчитать'}</button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Расчет...' : 'Рассчитать'}
+            </button>
           </div>
         </form>
 
         {error && <p className="error">{error}</p>}
         {savedId && <p className="success">Расчет сохранен. ID: {savedId}</p>}
         {timelineMessage && <p className="success">{timelineMessage}</p>}
+        {bootstrapError && <p className="muted">Bootstrap словарей недоступен: {bootstrapError}</p>}
+
+        <section className="card">
+          <div className="section-head">
+            <h2>Справочник локаций</h2>
+            <button
+              type="button"
+              onClick={handleSyncLocationsFromBitrix}
+              disabled={syncingLocations}
+            >
+              {syncingLocations ? 'Синхронизация...' : 'Синхронизировать из Bitrix24'}
+            </button>
+          </div>
+          <p className="muted">
+            Активных локаций: <b>{dictionaries.locations.length}</b>
+          </p>
+          {syncError && <p className="error">{syncError}</p>}
+          {syncResult && (
+            <div className="sync-result">
+              <p className="success">
+                Создано: <b>{syncResult.created}</b>, обновлено: <b>{syncResult.updated}</b>,
+                пропущено: <b>{syncResult.skipped}</b>
+              </p>
+              {syncResult.warnings.map((warning) => (
+                <p key={warning} className="warning">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="card highlight">
           <h2>Результат расчета</h2>
@@ -423,14 +680,28 @@ export function DealCalculatorPage() {
           {result && (
             <>
               <div className="result-metrics">
-                <p>Себестоимость: <b>{formatMoney(result.totalCost, result.currency)}</b></p>
-                <p>Маржа: <b>{formatMoney(result.margin, result.currency)}</b></p>
-                <p>Цена клиенту: <b>{formatMoney(result.clientPrice, result.currency)}</b></p>
-                <p>Валюта: <b>{result.currency}</b></p>
+                <p>
+                  Себестоимость: <b>{formatMoney(result.totalCost, result.currency)}</b>
+                </p>
+                <p>
+                  Маржа: <b>{formatMoney(result.margin, result.currency)}</b>
+                </p>
+                <p>
+                  Цена клиенту: <b>{formatMoney(result.clientPrice, result.currency)}</b>
+                </p>
+                <p>
+                  Валюта: <b>{result.currency}</b>
+                </p>
               </div>
 
               <table>
-                <thead><tr><th>Этап</th><th>Строка расчета</th><th>Стоимость</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Этап</th>
+                    <th>Строка расчета</th>
+                    <th>Стоимость</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {result.lines.map((line, idx) => (
                     <tr key={`${line.stage}-${idx}`}>
@@ -443,7 +714,9 @@ export function DealCalculatorPage() {
               </table>
 
               {(result.warnings ?? []).map((warning) => (
-                <p key={warning} className="warning">{warning}</p>
+                <p key={warning} className="warning">
+                  {warning}
+                </p>
               ))}
 
               <div className="actions result-actions">
@@ -471,6 +744,7 @@ export function DealCalculatorPage() {
                 <tr>
                   <th>Дата</th>
                   <th>Маршрут</th>
+                  <th>Контрагент</th>
                   <th>Себестоимость</th>
                   <th>Цена клиенту</th>
                   <th>Маржа</th>
@@ -481,7 +755,10 @@ export function DealCalculatorPage() {
                 {history.map((item) => (
                   <tr key={item.id}>
                     <td>{new Date(item.createdAt).toLocaleString()}</td>
-                    <td>{item.routeType || '-'}: {item.origin} -&gt; {item.destination}</td>
+                    <td>
+                      {item.routeType || '-'}: {item.origin} -&gt; {item.destination}
+                    </td>
+                    <td>{item.counterpartyName || 'Не указан'}</td>
                     <td>{formatMoney(item.totalCost, item.currency)}</td>
                     <td>{formatMoney(item.clientPrice, item.currency)}</td>
                     <td>{formatMoney(item.margin, item.currency)}</td>

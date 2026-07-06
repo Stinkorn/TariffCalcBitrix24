@@ -1,16 +1,40 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { DictionariesService } from './dictionaries.service';
+
+type CreateLocationBody = {
+  city?: string;
+  region?: string;
+};
 
 @Controller('dictionaries')
 export class DictionariesController {
+  constructor(private readonly dictionariesService: DictionariesService) {}
+
   @Get('bootstrap')
   getBootstrap() {
-    return {
-      routeTypes: ['KLD_OUT', 'KLD_IN'],
-      transportTypes: ['AUTO', 'RAIL', 'SEA', 'MULTIMODAL'],
-      containerTypes: ['20DC', '40DC', '40HC', '20REF', '40REF'],
-      containerStatuses: ['EMPTY', 'LOADED'],
-      currencies: ['EUR', 'USD', 'RUB'],
-      marginTypes: ['percent', 'fixed']
-    };
+    return this.dictionariesService.getBootstrap();
+  }
+
+  @Get('locations')
+  getLocations(@Query('search') search?: string) {
+    return this.dictionariesService.getLocations(search);
+  }
+
+  @Post('locations')
+  @HttpCode(201)
+  createLocation(@Body() body: CreateLocationBody) {
+    return this.dictionariesService.createLocation(body);
+  }
+
+  @Post('locations/seed')
+  @HttpCode(200)
+  seedLocations() {
+    return this.dictionariesService.seedLocations();
+  }
+
+  @Post('locations/sync/bitrix')
+  @HttpCode(200)
+  syncLocationsFromBitrix() {
+    return this.dictionariesService.syncLocationsFromBitrix();
   }
 }

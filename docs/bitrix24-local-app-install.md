@@ -10,6 +10,10 @@ WEB_PUBLIC_URL=https://calc.dvtransport.ru
 BITRIX_PORTAL_DOMAIN=novikgroup.bitrix24.ru
 BITRIX_CLIENT_ID=local.XXXXXXXXXXXX
 BITRIX_CLIENT_SECRET=XXXXXXXXXXXXXXXX
+BITRIX_LOCATIONS_LIST_IBLOCK_TYPE_ID=lists
+BITRIX_LOCATIONS_LIST_ID=123
+BITRIX_LOCATIONS_CITY_FIELD=NAME
+BITRIX_LOCATIONS_REGION_FIELD=PROPERTY_REGION
 ```
 
 `BITRIX_WEBHOOK_URL` может оставаться пустым. Для `POST /bitrix/placement/bind` он больше не используется.
@@ -84,6 +88,7 @@ domain=novikgroup.bitrix24.ru
 - `tokenExpiresAt`
 - `applicationScope`
 - `placementScopeIncluded`
+- `listsScopeIncluded`
 - `webhookConfigured`
 - `webhookUsedForPlacementBind`
 
@@ -92,6 +97,16 @@ domain=novikgroup.bitrix24.ru
 ```json
 {
   "message": "Bitrix app is not installed yet. Open local app install URL in Bitrix24.",
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
+
+Для синхронизации справочника локаций backend также проверяет scope `lists`. Если он не выдан, `POST /dictionaries/locations/sync/bitrix` вернет:
+
+```json
+{
+  "message": "Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.",
   "error": "Bad Request",
   "statusCode": 400
 }
@@ -132,6 +147,7 @@ domain=novikgroup.bitrix24.ru
 ```bash
 curl https://api.calc.dvtransport.ru/bitrix/placement/status
 curl -X POST https://api.calc.dvtransport.ru/bitrix/placement/bind
+curl -X POST https://api.calc.dvtransport.ru/dictionaries/locations/sync/bitrix
 ```
 
 HTML-страница диагностики:

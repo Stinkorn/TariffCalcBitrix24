@@ -7,6 +7,7 @@ import { BitrixRestClient } from './bitrix-rest.client';
 @Module({
   imports: [PrismaModule],
   controllers: [BitrixController],
-  providers: [BitrixPlacementService, BitrixRestClient]
+  providers: [BitrixPlacementService, BitrixRestClient],
+  exports: [BitrixPlacementService, BitrixRestClient]
 })
 export class BitrixModule {}

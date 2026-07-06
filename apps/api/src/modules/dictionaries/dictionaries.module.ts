@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { DictionariesController } from './dictionaries.controller';
+import { DictionariesService } from './dictionaries.service';
+import { BitrixModule } from '../bitrix/bitrix.module';
 
 @Module({
-  controllers: [DictionariesController]
+  imports: [BitrixModule],
+  controllers: [DictionariesController],
+  providers: [DictionariesService]
 })
 export class DictionariesModule {}

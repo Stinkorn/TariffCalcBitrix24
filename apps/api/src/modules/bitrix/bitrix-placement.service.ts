@@ -89,6 +89,13 @@ type TimelineCommentPayload = {
   calculationId?: string;
 };
 
+type BitrixCounterpartyResponse = {
+  dealId: string;
+  type: 'company' | 'contact' | 'unknown';
+  id: string | null;
+  name: string | null;
+};
+
 @Injectable()
 export class BitrixPlacementService {
   private readonly logger = new Logger(BitrixPlacementService.name);
@@ -240,6 +247,7 @@ export class BitrixPlacementService {
       tokenExpiresAt: latestToken?.expiresAt.toISOString() ?? null,
       applicationScope: latestToken?.scope ?? null,
       placementScopeIncluded: this.hasPlacementScope(latestToken?.scope),
+      listsScopeIncluded: this.hasListsScope(latestToken?.scope),
       webhookConfigured: Boolean(webhookUrl),
       webhookUsedForPlacementBind: false
     };
@@ -303,6 +311,64 @@ export class BitrixPlacementService {
       throw new BadGatewayException(
         `Не удалось записать расчет в таймлайн Bitrix24: ${message}`
       );
+    }
+  }
+
+  async getDealCounterparty(dealId: string, portalDomain?: string): Promise<BitrixCounterpartyResponse> {
+    const auth = await this.getPortalAuth(portalDomain);
+
+    try {
+      const dealResponse = await this.callBitrixMethod(
+        'crm.deal.get',
+        { id: dealId },
+        auth
+      ) as { result?: Record<string, unknown> };
+
+      const deal = dealResponse?.result ?? {};
+      const companyId = this.readEntityId(deal.COMPANY_ID);
+      const contactId = this.readEntityId(deal.CONTACT_ID);
+      const title = this.readString(deal.TITLE) ?? null;
+
+      if (companyId) {
+        const companyResponse = await this.callBitrixMethod(
+          'crm.company.get',
+          { id: companyId },
+          auth
+        ) as { result?: Record<string, unknown> };
+        const company = companyResponse?.result ?? {};
+        return {
+          dealId,
+          type: 'company',
+          id: companyId,
+          name: this.readString(company.TITLE) ?? this.readString(company.COMPANY_TITLE) ?? title
+        };
+      }
+
+      if (contactId) {
+        const contactResponse = await this.callBitrixMethod(
+          'crm.contact.get',
+          { id: contactId },
+          auth
+        ) as { result?: Record<string, unknown> };
+        const contact = contactResponse?.result ?? {};
+        return {
+          dealId,
+          type: 'contact',
+          id: contactId,
+          name: this.buildContactName(contact) ?? title
+        };
+      }
+
+      return {
+        dealId,
+        type: 'unknown',
+        id: null,
+        name: title
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bitrix counterparty request failed';
+      this.logger.warn(`Bitrix counterparty load failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`);
+      throw new BadGatewayException(`Не удалось загрузить контрагента сделки: ${message}`);
     }
   }
 
@@ -414,7 +480,7 @@ export class BitrixPlacementService {
     return this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
   }
 
-  private async getPortalAuth(
+  async getPortalAuth(
     requestedDomain?: string
   ): Promise<BitrixPlacementAuth> {
     const portal = await this.findSavedPortal(requestedDomain);
@@ -611,6 +677,25 @@ export class BitrixPlacementService {
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
+  private readEntityId(value: unknown) {
+    const raw = this.readString(value);
+    return raw && raw !== '0' ? raw : null;
+  }
+
+  private buildContactName(contact: Record<string, unknown>) {
+    const parts = [
+      this.readString(contact.NAME),
+      this.readString(contact.SECOND_NAME),
+      this.readString(contact.LAST_NAME)
+    ].filter((part): part is string => Boolean(part));
+
+    if (parts.length > 0) {
+      return parts.join(' ');
+    }
+
+    return this.readString(contact.FULL_NAME) ?? null;
+  }
+
   private extractDomainFromServerEndpoint(value: unknown) {
     const endpoint = this.readString(value);
     if (!endpoint) {
@@ -657,16 +742,11 @@ export class BitrixPlacementService {
   }
 
   private hasPlacementScope(scope?: string | null) {
-    if (!scope) {
-      return false;
-    }
+    return this.hasScope(scope, 'placement');
+  }
 
-    const normalized = scope
-      .split(/[,\s]+/)
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean);
-
-    return normalized.includes('placement');
+  hasListsScope(scope?: string | null) {
+    return this.hasScope(scope, 'lists');
   }
 
   private assertPlacementScope(scope?: string | null) {
@@ -677,6 +757,29 @@ export class BitrixPlacementService {
     throw new BadRequestException(
       'В локальном приложении Bitrix24 нужно добавить scope placement / Встраивание приложений и переустановить приложение'
     );
+  }
+
+  assertListsScope(scope?: string | null) {
+    if (this.hasListsScope(scope)) {
+      return;
+    }
+
+    throw new BadRequestException(
+      'Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.'
+    );
+  }
+
+  private hasScope(scope: string | null | undefined, expectedScope: string) {
+    if (!scope) {
+      return false;
+    }
+
+    const normalized = scope
+      .split(/[,\s]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+
+    return normalized.includes(expectedScope.toLowerCase());
   }
 
   private mapPlacementError(

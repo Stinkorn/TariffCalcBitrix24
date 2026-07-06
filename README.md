@@ -62,6 +62,12 @@ WEB_PUBLIC_URL=http://localhost:5173
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME"
 BITRIX_PORTAL_DOMAIN=
 BITRIX_WEBHOOK_URL=
+BITRIX_CLIENT_ID=
+BITRIX_CLIENT_SECRET=
+BITRIX_LOCATIONS_LIST_IBLOCK_TYPE_ID=lists
+BITRIX_LOCATIONS_LIST_ID=
+BITRIX_LOCATIONS_CITY_FIELD=NAME
+BITRIX_LOCATIONS_REGION_FIELD=PROPERTY_REGION
 ```
 
 Для frontend:
@@ -138,6 +144,22 @@ npm run prisma:push         # применение schema через db push
 - статусы контейнера
 - валюты
 - типы маржи
+- `locations` из PostgreSQL для frontend
+
+### `GET /dictionaries/locations`
+
+Возвращает активные локации из PostgreSQL. Поддерживает:
+
+- `GET /dictionaries/locations`
+- `GET /dictionaries/locations?search=Кал`
+
+### `POST /dictionaries/locations/seed`
+
+Идемпотентно загружает базовый набор городов РФ.
+
+### `POST /dictionaries/locations/sync/bitrix`
+
+Синхронизирует справочник локаций из Bitrix24 Universal Lists в PostgreSQL. Для этого приложению нужен scope `lists`, а в env должен быть заполнен `BITRIX_LOCATIONS_LIST_ID`.
 
 ### `POST /calculator/calculate`
 
@@ -203,7 +225,7 @@ APP_PUBLIC_URL=https://public-backend-url
 WEB_PUBLIC_URL=https://public-frontend-url
 ```
 
-После этого `POST /bitrix/placement/bind` вызовет Bitrix24 REST `placement.bind`. Полный OAuth-flow и надежное хранение токенов в БД пока не реализованы.
+После этого `POST /bitrix/placement/bind` вызовет Bitrix24 REST `placement.bind`. Для синхронизации локаций из Universal Lists нужен scope `lists`. После добавления scope приложение в Bitrix24 нужно переустановить.
 
 ## Данные
 
@@ -221,6 +243,7 @@ Prisma-схема сейчас содержит:
 Подробные документы лежат в `docs/`:
 
 - `docs/local-development.md` - локальная разработка без туннелей
+- `docs/dictionaries.md` - справочник локаций и sync с Bitrix24 lists
 - `docs/deployment-vps.md` - деплой на VPS через PM2, Nginx и Let's Encrypt
 - `docs/bitrix24-integration.md` - целевой сценарий Bitrix24
 - `docs/api-contracts.md` - целевые API-контракты
