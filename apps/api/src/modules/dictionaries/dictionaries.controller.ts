@@ -39,7 +39,7 @@ export class DictionariesController {
   }
 
   @Get('locations/sync/bitrix/debug')
-  debugLocationsBitrixSync() {
-    return this.dictionariesService.debugLocationsBitrixSync();
+  debugLocationsBitrixSync(@Query('limit') limit?: string) {
+    return this.dictionariesService.debugLocationsBitrixSync(limit);
   }
 }

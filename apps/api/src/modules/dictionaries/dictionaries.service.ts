@@ -40,6 +40,25 @@ type BitrixFieldCandidate = {
   value: string;
 };
 
+type FetchAllBitrixListElementsParams = {
+  iblockTypeId: string;
+  listId: string;
+  select?: string[];
+  filter?: Record<string, unknown>;
+  pageSize?: number;
+  maxItems?: number;
+};
+
+type FetchAllBitrixListElementsResult = {
+  elements: BitrixListElement[];
+  warnings: string[];
+  pagination: {
+    pagesFetched: number;
+    hasMore: boolean;
+    lastNext: string | number | null;
+  };
+};
+
 const DEFAULT_DICTIONARIES = {
   routeTypes: ['KLD_OUT', 'KLD_IN'],
   transportTypes: ['AUTO', 'RAIL', 'SEA', 'MULTIMODAL'],
@@ -245,27 +264,14 @@ export class DictionariesService {
     const countryField =
       this.configService.get<string>('BITRIX_LOCATIONS_COUNTRY_FIELD')?.trim() || null;
 
-    let response: unknown;
-    try {
-      response = await this.bitrixRestClient.callMethod(auth.domain, auth.accessToken, 'lists.element.get', {
-        IBLOCK_TYPE_ID: iblockTypeId,
-        IBLOCK_ID: listId,
-        FILTER: {},
-        SORT_BY: 'SORT',
-        SORT_ORDER: 'ASC'
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bitrix list sync failed';
-      if (/higher privileges than provided by the access token/i.test(message)) {
-        throw new BadRequestException(
-          'Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.'
-        );
-      }
-      throw new BadGatewayException(`Не удалось получить список локаций из Bitrix24: ${message}`);
-    }
-
-    const elements = this.extractBitrixElements(response);
-    const warnings: string[] = [];
+    const fetchResult = await this.fetchAllBitrixListElements(auth.domain, auth.accessToken, {
+      iblockTypeId,
+      listId,
+      filter: {},
+      pageSize: 50
+    });
+    const elements = fetchResult.elements;
+    const warnings: string[] = [...fetchResult.warnings];
     let created = 0;
     let updated = 0;
     let skipped = 0;
@@ -348,6 +354,8 @@ export class DictionariesService {
 
     return {
       success: true,
+      listId,
+      fetched: elements.length,
       created,
       updated,
       skipped,
@@ -355,7 +363,7 @@ export class DictionariesService {
     };
   }
 
-  async debugLocationsBitrixSync() {
+  async debugLocationsBitrixSync(limit?: string) {
     const listId = this.configService.get<string>('BITRIX_LOCATIONS_LIST_ID')?.trim();
     if (!listId) {
       throw new BadRequestException('BITRIX_LOCATIONS_LIST_ID is not configured');
@@ -372,39 +380,24 @@ export class DictionariesService {
       this.configService.get<string>('BITRIX_LOCATIONS_REGION_FIELD')?.trim() || 'PROPERTY_REGION';
     const countryField =
       this.configService.get<string>('BITRIX_LOCATIONS_COUNTRY_FIELD')?.trim() || null;
-
-    let response: unknown;
-    try {
-      response = await this.bitrixRestClient.callMethod(auth.domain, auth.accessToken, 'lists.element.get', {
-        IBLOCK_TYPE_ID: iblockTypeId,
-        IBLOCK_ID: listId,
-        FILTER: {},
-        SORT_BY: 'SORT',
-        SORT_ORDER: 'ASC',
-        NAV_PARAMS: { nPageSize: 5 },
-        start: 0
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Bitrix list debug failed';
-      if (/higher privileges than provided by the access token/i.test(message)) {
-        throw new BadRequestException(
-          'Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.'
-        );
-      }
-      throw new BadGatewayException(`Не удалось получить список локаций из Bitrix24: ${message}`);
-    }
-
-    const elements = this.extractBitrixElements(response).slice(0, 5);
+    const sampleLimit = this.parseDebugLimit(limit);
+    const fetchResult = await this.fetchAllBitrixListElements(auth.domain, auth.accessToken, {
+      iblockTypeId,
+      listId,
+      filter: {},
+      pageSize: 50
+    });
+    const elements = fetchResult.elements.slice(0, sampleLimit);
 
     return {
       success: true,
       listId,
       iblockTypeId,
-      configuredCityField: cityField,
-      configuredRegionField: regionField,
-      configuredCountryField: countryField,
-      totalFetched: elements.length,
-      items: elements.map((element) => this.toBitrixLocationDebugDto(element, cityField, regionField, countryField))
+      totalFetched: fetchResult.elements.length,
+      sampleCount: elements.length,
+      items: elements.map((element) => this.toBitrixLocationDebugDto(element, cityField, regionField, countryField)),
+      pagination: fetchResult.pagination,
+      warnings: fetchResult.warnings
     };
   }
 
@@ -465,6 +458,140 @@ export class DictionariesService {
 
     const values = Object.values(result as Record<string, unknown>);
     return values.filter((value) => value && typeof value === 'object') as BitrixListElement[];
+  }
+
+  private extractBitrixNext(response: unknown): string | number | null {
+    if (!response || typeof response !== 'object') {
+      return null;
+    }
+
+    const next = (response as { next?: unknown }).next;
+    if (typeof next === 'number' || typeof next === 'string') {
+      return next;
+    }
+
+    return null;
+  }
+
+  private parseDebugLimit(limit?: string) {
+    if (!limit) {
+      return 5;
+    }
+
+    const parsed = Number.parseInt(limit, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      throw new BadRequestException('Query parameter "limit" must be an integer from 1 to 50.');
+    }
+
+    return Math.min(parsed, 50);
+  }
+
+  private async fetchAllBitrixListElements(
+    domain: string,
+    accessToken: string,
+    params: FetchAllBitrixListElementsParams
+  ): Promise<FetchAllBitrixListElementsResult> {
+    const warnings: string[] = [];
+    const elements: BitrixListElement[] = [];
+    const seenStarts = new Set<string>();
+    const maxPages = 100;
+    const maxItems = params.maxItems ?? 10000;
+    const pageSize = params.pageSize ?? 50;
+    let start: string | number = 0;
+    let pagesFetched = 0;
+    let lastNext: string | number | null = null;
+
+    while (pagesFetched < maxPages) {
+      const startKey = String(start);
+      if (seenStarts.has(startKey)) {
+        warnings.push('Bitrix list pagination stopped by safety limit');
+        break;
+      }
+      seenStarts.add(startKey);
+
+      let response: unknown;
+      try {
+        response = await this.bitrixRestClient.callMethod(domain, accessToken, 'lists.element.get', {
+          IBLOCK_TYPE_ID: params.iblockTypeId,
+          IBLOCK_ID: params.listId,
+          FILTER: params.filter ?? {},
+          SELECT: params.select,
+          SORT_BY: 'SORT',
+          SORT_ORDER: 'ASC',
+          NAV_PARAMS: { nPageSize: pageSize },
+          start
+        });
+      } catch (error) {
+        this.throwBitrixListError(error);
+      }
+
+      const pageItems = this.extractBitrixElements(response);
+      const next = this.extractBitrixNext(response);
+      pagesFetched += 1;
+      elements.push(...pageItems);
+      lastNext = next;
+
+      this.logger.log(
+        `Bitrix locations sync: fetched page ${pagesFetched}, items ${pageItems.length}, next ${next ?? 'null'}`
+      );
+
+      if (elements.length >= maxItems) {
+        if (elements.length > maxItems) {
+          elements.length = maxItems;
+        }
+        warnings.push('Bitrix list pagination stopped by safety limit');
+        break;
+      }
+
+      if (next === null || next === undefined || next === '') {
+        this.logger.log(`Bitrix locations sync: total fetched ${elements.length}`);
+        return {
+          elements,
+          warnings,
+          pagination: {
+            pagesFetched,
+            hasMore: false,
+            lastNext
+          }
+        };
+      }
+
+      start = next;
+    }
+
+    if (pagesFetched >= maxPages) {
+      warnings.push('Bitrix list pagination stopped by safety limit');
+    }
+
+    this.logger.warn(`Bitrix locations sync: pagination stopped early, total fetched ${elements.length}`);
+    this.logger.log(`Bitrix locations sync: total fetched ${elements.length}`);
+
+    return {
+      elements,
+      warnings,
+      pagination: {
+        pagesFetched,
+        hasMore: true,
+        lastNext
+      }
+    };
+  }
+
+  private throwBitrixListError(error: unknown): never {
+    const message = error instanceof Error ? error.message : 'Bitrix list request failed';
+    if (/higher privileges than provided by the access token/i.test(message)) {
+      throw new BadRequestException(
+        'Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.'
+      );
+    }
+
+    if (/Iblock not found/i.test(message)) {
+      throw new BadRequestException(
+        'Список Bitrix24 не найден. Проверьте BITRIX_LOCATIONS_LIST_ID и BITRIX_LOCATIONS_LIST_IBLOCK_TYPE_ID'
+      );
+    }
+
+    throw new BadGatewayException(`Не удалось получить список локаций из Bitrix24: ${message}`);
   }
 
   private readBitrixField(element: BitrixListElement, fieldName: string) {
