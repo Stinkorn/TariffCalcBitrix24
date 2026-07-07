@@ -1172,7 +1172,7 @@ export function DealCalculatorPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="fields request-grid">
+                    <div className="fields stage-grid">
                       <label>
                         Тип этапа
                         <select
@@ -1187,7 +1187,7 @@ export function DealCalculatorPage() {
                         </select>
                       </label>
                       <CityAutocomplete
-                        label="Откуда"
+                        label="Пункт погрузки"
                         name={`${stage.id}-from`}
                         metadataPrefix={`${stage.id}-from`}
                         value={stage.fromLocation}
@@ -1197,15 +1197,8 @@ export function DealCalculatorPage() {
                           sendParentResize();
                         }}
                       />
-                      <label>
-                        Адрес откуда
-                        <input
-                          value={stage.fromAddress}
-                          onChange={(event) => updateStage(stage.id, { fromAddress: event.target.value })}
-                        />
-                      </label>
                       <CityAutocomplete
-                        label="Куда"
+                        label="Пункт выгрузки"
                         name={`${stage.id}-to`}
                         metadataPrefix={`${stage.id}-to`}
                         value={stage.toLocation}
@@ -1215,23 +1208,19 @@ export function DealCalculatorPage() {
                           sendParentResize();
                         }}
                       />
-                      <label>
-                        Адрес куда
-                        <input
-                          value={stage.toAddress}
-                          onChange={(event) => updateStage(stage.id, { toAddress: event.target.value })}
-                        />
-                      </label>
-                      <label>
-                        Комментарий
-                        <input
-                          value={stage.comment}
-                          onChange={(event) => updateStage(stage.id, { comment: event.target.value })}
-                        />
-                      </label>
-                      <label>
+                      <label className="stage-cost-field">
                         Стоимость этапа
-                        <input value={formatMoney(stage.costAmount, stage.costCurrency)} readOnly />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={stage.costAmount}
+                          onChange={(event) =>
+                            updateStage(stage.id, {
+                              costAmount: clampNumber(Number(event.target.value), 0)
+                            })
+                          }
+                        />
                       </label>
                     </div>
                   </article>
