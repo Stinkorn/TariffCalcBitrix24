@@ -93,9 +93,17 @@ type CounterpartyResponse = {
 type DealPrefillResponse = {
   dealId: string;
   cargoName: string;
+  cargoNameRaw?: string;
+  cargoNameResolved?: boolean;
   vehicleType: string;
+  vehicleTypeRaw?: string;
+  vehicleTypeResolved?: boolean;
   origin: string;
+  originRaw: string;
+  originResolved: boolean;
   destination: string;
+  destinationRaw: string;
+  destinationResolved: boolean;
 };
 
 type FormState = {
@@ -373,6 +381,7 @@ export function DealCalculatorPage() {
     admin: false
   });
   const [prefillLoading, setPrefillLoading] = useState(false);
+  const [prefillWarning, setPrefillWarning] = useState<string | null>(null);
   const [result, setResult] = useState<CalculateResponse | null>(null);
   const [history, setHistory] = useState<SavedCalculation[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -478,6 +487,7 @@ export function DealCalculatorPage() {
     counterpartyError,
     counterpartyLoading,
     prefillLoading,
+    prefillWarning,
     loading,
     saving,
     writingTimeline,
@@ -530,6 +540,7 @@ export function DealCalculatorPage() {
 
   async function loadPrefill(dealId: string, portalDomain: string) {
     setPrefillLoading(true);
+    setPrefillWarning(null);
 
     try {
       const search = new URLSearchParams();
@@ -547,12 +558,23 @@ export function DealCalculatorPage() {
       }
 
       const data = (await response.json()) as DealPrefillResponse;
+      const hasUnresolvedCity =
+        (data.originRaw && !data.originResolved) || (data.destinationRaw && !data.destinationResolved);
+
       setFormState((current) => ({
         ...current,
         cargoName: fieldDirtyRef.current.cargoName ? current.cargoName : data.cargoName || current.cargoName,
         vehicleType: fieldDirtyRef.current.vehicleType ? current.vehicleType : data.vehicleType || current.vehicleType,
-        origin: fieldDirtyRef.current.origin ? current.origin : data.origin || current.origin,
-        destination: fieldDirtyRef.current.destination ? current.destination : data.destination || current.destination
+        origin: fieldDirtyRef.current.origin
+          ? current.origin
+          : data.originResolved
+            ? data.origin || current.origin
+            : current.origin,
+        destination: fieldDirtyRef.current.destination
+          ? current.destination
+          : data.destinationResolved
+            ? data.destination || current.destination
+            : current.destination
       }));
 
       if (!stagesDirtyRef.current) {
@@ -562,10 +584,10 @@ export function DealCalculatorPage() {
           }
 
           const next = [...current];
-          if (data.origin) {
+          if (data.originResolved && data.origin) {
             next[0] = { ...next[0], fromLocation: data.origin };
           }
-          if (data.destination) {
+          if (data.destinationResolved && data.destination) {
             next[next.length - 1] = { ...next[next.length - 1], toLocation: data.destination };
           }
           if (data.vehicleType) {
@@ -575,6 +597,10 @@ export function DealCalculatorPage() {
           }
           return normalizeStages(next);
         });
+      }
+
+      if (hasUnresolvedCity) {
+        setPrefillWarning('Не удалось определить город из поля сделки. Проверьте настройку поля Bitrix24.');
       }
     } catch {
       // ignore prefill errors, form remains editable
@@ -957,6 +983,7 @@ export function DealCalculatorPage() {
         </section>
 
         {error && <p className="error">{error}</p>}
+        {prefillWarning && <p className="warning">{prefillWarning}</p>}
         {savedId && <p className="success">Расчет сохранен. ID: {savedId}</p>}
         {timelineMessage && <p className="success">{timelineMessage}</p>}
         {bootstrapError && <p className="muted">Bootstrap словарей недоступен: {bootstrapError}</p>}

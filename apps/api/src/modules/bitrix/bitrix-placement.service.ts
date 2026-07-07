@@ -99,9 +99,42 @@ type BitrixCounterpartyResponse = {
 type BitrixDealPrefillResponse = {
   dealId: string;
   cargoName: string;
+  cargoNameRaw?: string;
+  cargoNameResolved?: boolean;
   vehicleType: string;
+  vehicleTypeRaw?: string;
+  vehicleTypeResolved?: boolean;
   origin: string;
+  originRaw: string;
+  originResolved: boolean;
   destination: string;
+  destinationRaw: string;
+  destinationResolved: boolean;
+};
+
+type BitrixDealPrefillDebugResponse = {
+  dealId: string;
+  fields: Array<{
+    fieldName: string;
+    rawValue: string | string[] | null;
+    resolvedValue: string;
+    resolved: boolean;
+    metadata: {
+      fieldName: string;
+      userTypeId: string;
+      listCount: number;
+    } | null;
+    selectedItems: Array<{
+      id: string;
+      value: string;
+    }>;
+  }>;
+};
+
+type BitrixCrmUserField = {
+  FIELD_NAME?: unknown;
+  USER_TYPE_ID?: unknown;
+  LIST?: unknown;
 };
 
 @Injectable()
@@ -391,18 +424,96 @@ export class BitrixPlacementService {
       ) as { result?: Record<string, unknown> };
 
       const deal = dealResponse?.result ?? {};
+      const userFields = await this.getDealUserFields(auth);
+      const cargo = this.resolveCrmUserFieldEnumValue(
+        userFields,
+        'UF_CRM_1779800821',
+        deal.UF_CRM_1779800821
+      );
+      const vehicle = this.resolveCrmUserFieldEnumValue(
+        userFields,
+        'UF_CRM_1744631495248',
+        deal.UF_CRM_1744631495248
+      );
+      const origin = this.resolveCrmUserFieldEnumValue(
+        userFields,
+        'UF_CRM_1742553879',
+        deal.UF_CRM_1742553879
+      );
+      const destination = this.resolveCrmUserFieldEnumValue(
+        userFields,
+        'UF_CRM_1742558888',
+        deal.UF_CRM_1742558888
+      );
 
       return {
         dealId,
-        cargoName: this.readString(deal.UF_CRM_1779800821) ?? '',
-        vehicleType: this.readString(deal.UF_CRM_1744631495248) ?? '',
-        origin: this.readString(deal.UF_CRM_1742553879) ?? '',
-        destination: this.readString(deal.UF_CRM_1742558888) ?? ''
+        cargoName: cargo.resolvedValue,
+        cargoNameRaw: cargo.rawValueForResponse,
+        cargoNameResolved: cargo.resolved,
+        vehicleType: vehicle.resolvedValue,
+        vehicleTypeRaw: vehicle.rawValueForResponse,
+        vehicleTypeResolved: vehicle.resolved,
+        origin: origin.resolvedValue,
+        originRaw: origin.rawValueForResponse,
+        originResolved: origin.resolved,
+        destination: destination.resolvedValue,
+        destinationRaw: destination.rawValueForResponse,
+        destinationResolved: destination.resolved
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bitrix deal prefill request failed';
       this.logger.warn(`Bitrix deal prefill load failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`);
       throw new BadGatewayException(`Не удалось загрузить prefill сделки: ${message}`);
+    }
+  }
+
+  async getDealPrefillDebug(
+    dealId: string,
+    portalDomain?: string
+  ): Promise<BitrixDealPrefillDebugResponse> {
+    const auth = await this.getPortalAuth(portalDomain);
+
+    try {
+      const dealResponse = await this.callBitrixMethod(
+        'crm.deal.get',
+        { id: dealId },
+        auth
+      ) as { result?: Record<string, unknown> };
+
+      const deal = dealResponse?.result ?? {};
+      const userFields = await this.getDealUserFields(auth);
+      const fieldNames = [
+        'UF_CRM_1742553879',
+        'UF_CRM_1742558888',
+        'UF_CRM_1744631495248',
+        'UF_CRM_1779800821'
+      ] as const;
+
+      return {
+        dealId,
+        fields: fieldNames.map((fieldName) => {
+          const resolved = this.resolveCrmUserFieldEnumValue(userFields, fieldName, deal[fieldName]);
+          return {
+            fieldName,
+            rawValue: resolved.rawValue,
+            resolvedValue: resolved.resolvedValue,
+            resolved: resolved.resolved,
+            metadata: resolved.metadata
+              ? {
+                  fieldName: resolved.metadata.fieldName,
+                  userTypeId: resolved.metadata.userTypeId,
+                  listCount: resolved.metadata.listCount
+                }
+              : null,
+            selectedItems: resolved.selectedItems
+          };
+        })
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bitrix deal prefill debug request failed';
+      this.logger.warn(`Bitrix deal prefill debug failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`);
+      throw new BadGatewayException(`Не удалось загрузить debug prefill сделки: ${message}`);
     }
   }
 
@@ -512,6 +623,13 @@ export class BitrixPlacementService {
     authInput: BitrixPlacementAuth
   ) {
     return this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
+  }
+
+  private async getDealUserFields(auth: BitrixPlacementAuth) {
+    const response = await this.callBitrixMethod('crm.deal.userfield.list', {}, auth) as {
+      result?: unknown;
+    };
+    return Array.isArray(response.result) ? (response.result as BitrixCrmUserField[]) : [];
   }
 
   async getPortalAuth(
@@ -709,6 +827,89 @@ export class BitrixPlacementService {
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private readScalarString(value: unknown) {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    return undefined;
+  }
+
+  private readStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => this.readScalarString(item))
+        .filter((item): item is string => Boolean(item));
+    }
+
+    const scalar = this.readScalarString(value);
+    return scalar ? [scalar] : [];
+  }
+
+  private resolveCrmUserFieldEnumValue(
+    userFields: BitrixCrmUserField[],
+    fieldName: string,
+    rawValue: unknown
+  ) {
+    const field = userFields.find((item) => this.readScalarString(item.FIELD_NAME) === fieldName);
+    const userTypeId = this.readScalarString(field?.USER_TYPE_ID)?.toLowerCase() ?? '';
+    const rawItems = this.readStringArray(rawValue);
+    const listItemsRaw = Array.isArray(field?.LIST) ? field?.LIST : [];
+    const listItems = listItemsRaw
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null;
+        }
+        const record = item as Record<string, unknown>;
+        const id = this.readScalarString(record.ID);
+        const value = this.readScalarString(record.VALUE);
+        if (!id || !value) {
+          return null;
+        }
+        return { id, value };
+      })
+      .filter((item): item is { id: string; value: string } => Boolean(item));
+
+    const metadata = field
+      ? {
+          fieldName,
+          userTypeId: this.readScalarString(field.USER_TYPE_ID) ?? '',
+          listCount: listItems.length
+        }
+      : null;
+
+    if (userTypeId === 'enumeration' || userTypeId === 'list') {
+      const selectedItems = rawItems
+        .map((item) => listItems.find((listItem) => listItem.id === item))
+        .filter((item): item is { id: string; value: string } => Boolean(item));
+
+      return {
+        rawValue: Array.isArray(rawValue) ? rawItems : rawItems[0] ?? null,
+        rawValueForResponse: rawItems.join(', '),
+        resolvedValue: selectedItems.map((item) => item.value).join(', '),
+        resolved: selectedItems.length > 0,
+        metadata,
+        selectedItems
+      };
+    }
+
+    const scalarValue = rawItems.join(', ');
+    return {
+      rawValue: Array.isArray(rawValue) ? rawItems : rawItems[0] ?? null,
+      rawValueForResponse: scalarValue,
+      resolvedValue: scalarValue,
+      resolved: scalarValue.length > 0,
+      metadata,
+      selectedItems: []
+    };
   }
 
   private readEntityId(value: unknown) {
