@@ -96,6 +96,14 @@ type BitrixCounterpartyResponse = {
   name: string | null;
 };
 
+type BitrixDealPrefillResponse = {
+  dealId: string;
+  cargoName: string;
+  vehicleType: string;
+  origin: string;
+  destination: string;
+};
+
 @Injectable()
 export class BitrixPlacementService {
   private readonly logger = new Logger(BitrixPlacementService.name);
@@ -369,6 +377,32 @@ export class BitrixPlacementService {
       const message = error instanceof Error ? error.message : 'Bitrix counterparty request failed';
       this.logger.warn(`Bitrix counterparty load failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`);
       throw new BadGatewayException(`Не удалось загрузить контрагента сделки: ${message}`);
+    }
+  }
+
+  async getDealPrefill(dealId: string, portalDomain?: string): Promise<BitrixDealPrefillResponse> {
+    const auth = await this.getPortalAuth(portalDomain);
+
+    try {
+      const dealResponse = await this.callBitrixMethod(
+        'crm.deal.get',
+        { id: dealId },
+        auth
+      ) as { result?: Record<string, unknown> };
+
+      const deal = dealResponse?.result ?? {};
+
+      return {
+        dealId,
+        cargoName: this.readString(deal.UF_CRM_1779800821) ?? '',
+        vehicleType: this.readString(deal.UF_CRM_1744631495248) ?? '',
+        origin: this.readString(deal.UF_CRM_1742553879) ?? '',
+        destination: this.readString(deal.UF_CRM_1742558888) ?? ''
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bitrix deal prefill request failed';
+      this.logger.warn(`Bitrix deal prefill load failed: portal=${auth.domain}, dealId=${dealId}, message=${message}`);
+      throw new BadGatewayException(`Не удалось загрузить prefill сделки: ${message}`);
     }
   }
 

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CityAutocomplete } from '../components/CityAutocomplete';
+import {
+  CityAutocomplete,
+  type SelectedLocation
+} from '../components/CityAutocomplete';
 import { useDictionaries } from '../context/DictionariesContext';
 import type { BitrixLocationSyncResponse } from '../types/dictionaries';
 
@@ -87,14 +90,20 @@ type CounterpartyResponse = {
   name: string | null;
 };
 
+type DealPrefillResponse = {
+  dealId: string;
+  cargoName: string;
+  vehicleType: string;
+  origin: string;
+  destination: string;
+};
+
 type FormState = {
   dealId: string;
   portalDomain: string;
   routeType: string;
   origin: string;
-  originAddress: string;
   destination: string;
-  destinationAddress: string;
   cargoName: string;
   vehicleType: string;
   transportType: string;
@@ -154,16 +163,20 @@ function buildStageTitle(type: StageType, index: number) {
   return `Этап ${index + 1} — ${STAGE_TYPE_LABELS[type]}`;
 }
 
+function sendParentResize() {
+  window.parent?.postMessage(
+    { type: 'tariffcalc:resize', height: document.documentElement.scrollHeight },
+    '*'
+  );
+}
+
 function normalizeStages(stages: StageItem[]) {
-  return stages.map((stage, index) => {
-    const costAmount = STAGE_BASE_COSTS[stage.type] ?? STAGE_BASE_COSTS.CUSTOM;
-    return {
-      ...stage,
-      sortOrder: index + 1,
-      title: buildStageTitle(stage.type, index),
-      costAmount
-    };
-  });
+  return stages.map((stage, index) => ({
+    ...stage,
+    sortOrder: index + 1,
+    title: buildStageTitle(stage.type, index),
+    costAmount: STAGE_BASE_COSTS[stage.type] ?? STAGE_BASE_COSTS.CUSTOM
+  }));
 }
 
 function createStage(
@@ -203,16 +216,16 @@ function buildStagesFromTemplate(
           ? ['AUTO', 'SEA', 'RAIL', 'AUTO']
           : [];
 
-  const stages = stageTypes.map((type, index) =>
-    createStage(type, index, currency, {
-      fromLocation: index === 0 ? defaults.origin : '',
-      toLocation: index === stageTypes.length - 1 ? defaults.destination : '',
-      containerType: defaults.containerType,
-      vehicleType: defaults.vehicleType
-    })
+  return normalizeStages(
+    stageTypes.map((type, index) =>
+      createStage(type, index, currency, {
+        fromLocation: index === 0 ? defaults.origin : '',
+        toLocation: index === stageTypes.length - 1 ? defaults.destination : '',
+        containerType: defaults.containerType,
+        vehicleType: defaults.vehicleType
+      })
+    )
   );
-
-  return normalizeStages(stages);
 }
 
 function buildDefaultServices(): AdditionalService[] {
@@ -231,7 +244,12 @@ function buildCalculationSnapshot(
   stages: StageItem[],
   services: AdditionalService[]
 ) {
-  const normalizedStages = normalizeStages(stages);
+  const normalizedStages = normalizeStages(stages).map((stage) => ({
+    ...stage,
+    vehicleType: stage.vehicleType || formState.vehicleType,
+    containerType: stage.containerType || formState.containerType,
+    costCurrency: formState.currency
+  }));
   const normalizedServices = services.map((service) => ({
     ...service,
     costAmount: SERVICE_BASE_COSTS[service.serviceName] * Math.max(service.quantity, 1)
@@ -290,13 +308,13 @@ function buildCalculationSnapshot(
       lines,
       warnings
     },
+    normalizedStages,
+    normalizedServices,
     totalStages,
     totalServices,
     totalCost,
     marginPercent,
-    clientPrice,
-    normalizedStages,
-    normalizedServices
+    clientPrice
   };
 }
 
@@ -313,11 +331,9 @@ export function DealCalculatorPage() {
       portalDomain: initialDomain,
       routeType: 'KLD_OUT',
       origin: '',
-      originAddress: '',
       destination: '',
-      destinationAddress: '',
       cargoName: '',
-      vehicleType: 'Контейнеровоз',
+      vehicleType: '',
       transportType: 'AUTO',
       containerType: '40REF',
       containerStatus: 'SOC',
@@ -336,6 +352,13 @@ export function DealCalculatorPage() {
     [initialDealId, initialDomain]
   );
 
+  const fieldDirtyRef = useRef({
+    cargoName: false,
+    vehicleType: false,
+    origin: false,
+    destination: false
+  });
+  const stagesDirtyRef = useRef(false);
   const [formState, setFormState] = useState<FormState>(initialFormState);
   const [stages, setStages] = useState<StageItem[]>(() =>
     buildStagesFromTemplate('AUTO_ONLY', initialFormState.currency, initialFormState)
@@ -349,6 +372,7 @@ export function DealCalculatorPage() {
     summary: true,
     admin: false
   });
+  const [prefillLoading, setPrefillLoading] = useState(false);
   const [result, setResult] = useState<CalculateResponse | null>(null);
   const [history, setHistory] = useState<SavedCalculation[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -383,20 +407,19 @@ export function DealCalculatorPage() {
     }
 
     void loadCounterparty(initialDealId, initialDomain);
+    void loadPrefill(initialDealId, initialDomain);
   }, [initialDealId, initialDomain]);
 
   useEffect(() => {
-    setStages((current) => current.map((stage) => ({ ...stage, costCurrency: formState.currency })));
-  }, [formState.currency]);
-
-  useEffect(() => {
-    setServices((current) =>
-      current.map((service) => ({
-        ...service,
-        costAmount: SERVICE_BASE_COSTS[service.serviceName] * Math.max(service.quantity, 1)
+    setStages((current) =>
+      current.map((stage) => ({
+        ...stage,
+        costCurrency: formState.currency,
+        vehicleType: stage.vehicleType || formState.vehicleType,
+        containerType: stage.containerType || formState.containerType
       }))
     );
-  }, []);
+  }, [formState.containerType, formState.currency, formState.vehicleType]);
 
   useEffect(() => {
     function sendResize() {
@@ -437,16 +460,7 @@ export function DealCalculatorPage() {
   }, []);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      window.parent?.postMessage(
-        {
-          type: 'tariffcalc:resize',
-          height: document.documentElement.scrollHeight
-        },
-        '*'
-      );
-    }, 0);
-
+    const timeoutId = window.setTimeout(() => sendParentResize(), 0);
     return () => window.clearTimeout(timeoutId);
   }, [
     openSections,
@@ -463,6 +477,7 @@ export function DealCalculatorPage() {
     counterparty,
     counterpartyError,
     counterpartyLoading,
+    prefillLoading,
     loading,
     saving,
     writingTimeline,
@@ -500,18 +515,7 @@ export function DealCalculatorPage() {
       );
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = (await response.json()) as { message?: string | string[] };
-          if (Array.isArray(payload.message)) {
-            message = payload.message.join('; ');
-          } else if (typeof payload.message === 'string' && payload.message.trim()) {
-            message = payload.message;
-          }
-        } catch {
-          // ignore non-json response body
-        }
-        throw new Error(message);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = (await response.json()) as CounterpartyResponse;
@@ -524,23 +528,87 @@ export function DealCalculatorPage() {
     }
   }
 
-  function updateFormState<K extends keyof FormState>(key: K, value: FormState[K]) {
+  async function loadPrefill(dealId: string, portalDomain: string) {
+    setPrefillLoading(true);
+
+    try {
+      const search = new URLSearchParams();
+      if (portalDomain.trim()) {
+        search.set('portalDomain', portalDomain.trim());
+      }
+
+      const query = search.toString();
+      const response = await fetch(
+        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(dealId)}/prefill${query ? `?${query}` : ''}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as DealPrefillResponse;
+      setFormState((current) => ({
+        ...current,
+        cargoName: fieldDirtyRef.current.cargoName ? current.cargoName : data.cargoName || current.cargoName,
+        vehicleType: fieldDirtyRef.current.vehicleType ? current.vehicleType : data.vehicleType || current.vehicleType,
+        origin: fieldDirtyRef.current.origin ? current.origin : data.origin || current.origin,
+        destination: fieldDirtyRef.current.destination ? current.destination : data.destination || current.destination
+      }));
+
+      if (!stagesDirtyRef.current) {
+        setStages((current) => {
+          if (current.length === 0) {
+            return current;
+          }
+
+          const next = [...current];
+          if (data.origin) {
+            next[0] = { ...next[0], fromLocation: data.origin };
+          }
+          if (data.destination) {
+            next[next.length - 1] = { ...next[next.length - 1], toLocation: data.destination };
+          }
+          if (data.vehicleType) {
+            for (let index = 0; index < next.length; index += 1) {
+              next[index] = { ...next[index], vehicleType: data.vehicleType };
+            }
+          }
+          return normalizeStages(next);
+        });
+      }
+    } catch {
+      // ignore prefill errors, form remains editable
+    } finally {
+      setPrefillLoading(false);
+      sendParentResize();
+    }
+  }
+
+  function updateFormState<K extends keyof FormState>(
+    key: K,
+    value: FormState[K],
+    markDirty = true
+  ) {
+    if (markDirty && (key === 'cargoName' || key === 'vehicleType' || key === 'origin' || key === 'destination')) {
+      fieldDirtyRef.current[key] = true;
+    }
     setFormState((current) => ({ ...current, [key]: value }));
   }
 
   function updateStage(stageId: string, patch: Partial<StageItem>) {
+    stagesDirtyRef.current = true;
     setStages((current) =>
-      normalizeStages(
-        current.map((stage) => (stage.id === stageId ? { ...stage, ...patch } : stage))
-      )
+      normalizeStages(current.map((stage) => (stage.id === stageId ? { ...stage, ...patch } : stage)))
     );
   }
 
   function toggleAccordion(section: AccordionKey) {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+    sendParentResize();
   }
 
   function handleTemplateSelect(template: RouteTemplateType) {
+    stagesDirtyRef.current = true;
     setRouteTemplate(template);
     const nextStages =
       template === 'CUSTOM'
@@ -555,6 +623,7 @@ export function DealCalculatorPage() {
   }
 
   function handleAddStage() {
+    stagesDirtyRef.current = true;
     setStages((current) =>
       normalizeStages([
         ...current,
@@ -565,16 +634,20 @@ export function DealCalculatorPage() {
       ])
     );
     setOpenSections((current) => ({ ...current, stages: true }));
+    sendParentResize();
   }
 
   function handleDeleteStage(stageId: string) {
+    stagesDirtyRef.current = true;
     setStages((current) => normalizeStages(current.filter((stage) => stage.id !== stageId)));
     setServices((current) =>
       current.map((service) => (service.stageId === stageId ? { ...service, stageId: '' } : service))
     );
+    sendParentResize();
   }
 
   function handleMoveStage(stageId: string, direction: -1 | 1) {
+    stagesDirtyRef.current = true;
     setStages((current) => {
       const index = current.findIndex((stage) => stage.id === stageId);
       const nextIndex = index + direction;
@@ -705,6 +778,8 @@ export function DealCalculatorPage() {
           routeType: formState.routeType,
           origin: formState.origin,
           destination: formState.destination,
+          cargoName: formState.cargoName,
+          vehicleType: formState.vehicleType,
           weightKg: formState.weightKg,
           volumeM3: formState.volumeM3,
           transportType: formState.transportType,
@@ -733,9 +808,7 @@ export function DealCalculatorPage() {
       setCalculatedAt(new Date().toISOString());
       await loadHistory(formState.dealId);
     } catch (saveError) {
-      setError(
-        `Ошибка сохранения: ${saveError instanceof Error ? saveError.message : String(saveError)}`
-      );
+      setError(`Ошибка сохранения: ${saveError instanceof Error ? saveError.message : String(saveError)}`);
     } finally {
       setSaving(false);
     }
@@ -752,27 +825,14 @@ export function DealCalculatorPage() {
       });
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = (await response.json()) as { message?: string | string[] };
-          if (Array.isArray(payload.message)) {
-            message = payload.message.join('; ');
-          } else if (typeof payload.message === 'string' && payload.message.trim()) {
-            message = payload.message;
-          }
-        } catch {
-          // ignore non-json response
-        }
-        throw new Error(message);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = (await response.json()) as BitrixLocationSyncResponse;
       setSyncResult(data);
       await refreshBootstrap();
     } catch (syncLocationsError) {
-      setSyncError(
-        syncLocationsError instanceof Error ? syncLocationsError.message : String(syncLocationsError)
-      );
+      setSyncError(syncLocationsError instanceof Error ? syncLocationsError.message : String(syncLocationsError));
     } finally {
       setSyncingLocations(false);
     }
@@ -799,7 +859,10 @@ export function DealCalculatorPage() {
           body: JSON.stringify({
             portalDomain: formState.portalDomain || undefined,
             route: `${formState.origin} -> ${formState.destination}`,
-            cargoType: `${formState.containerType} / ${formState.containerStatus}`,
+            from: formState.origin,
+            to: formState.destination,
+            cargoType: formState.cargoName || `${formState.containerType} / ${formState.containerStatus}`,
+            cargoParams: formState.vehicleType || undefined,
             weightKg: formState.weightKg,
             volumeM3: formState.volumeM3,
             selectedTariff: stages.map((stage) => STAGE_TYPE_LABELS[stage.type]).join(' + '),
@@ -811,18 +874,7 @@ export function DealCalculatorPage() {
       );
 
       if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = (await response.json()) as { message?: string | string[] };
-          if (Array.isArray(payload.message)) {
-            message = payload.message.join('; ');
-          } else if (typeof payload.message === 'string' && payload.message.trim()) {
-            message = payload.message;
-          }
-        } catch {
-          // ignore non-json error body
-        }
-        throw new Error(message);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       await (response.json() as Promise<TimelineCommentResponse>);
@@ -831,12 +883,33 @@ export function DealCalculatorPage() {
       setCalculatedAt(new Date().toISOString());
       setTimelineMessage('Расчет записан в сделку Bitrix24');
     } catch (timelineError) {
-      setError(
-        `Ошибка записи в сделку: ${timelineError instanceof Error ? timelineError.message : String(timelineError)}`
-      );
+      setError(`Ошибка записи в сделку: ${timelineError instanceof Error ? timelineError.message : String(timelineError)}`);
     } finally {
       setWritingTimeline(false);
     }
+  }
+
+  function handleLocationTextChange(field: 'origin' | 'destination', text: string) {
+    updateFormState(field, text, true);
+  }
+
+  function handleLocationSelect(field: 'origin' | 'destination', location: SelectedLocation, text: string) {
+    updateFormState(field, location?.city ?? text, true);
+
+    if (!stagesDirtyRef.current && stages.length > 0) {
+      setStages((current) => {
+        const next = [...current];
+        if (field === 'origin' && next[0]) {
+          next[0] = { ...next[0], fromLocation: location?.city ?? text };
+        }
+        if (field === 'destination' && next[next.length - 1]) {
+          next[next.length - 1] = { ...next[next.length - 1], toLocation: location?.city ?? text };
+        }
+        return normalizeStages(next);
+      });
+    }
+
+    sendParentResize();
   }
 
   const stageOptionsMarkup = stages.map((stage) => (
@@ -876,7 +949,9 @@ export function DealCalculatorPage() {
               <strong className="meta-value">
                 {formState.origin || 'Пункт погрузки'} {'->'} {formState.destination || 'Пункт выгрузки'}
               </strong>
-              <span className="meta-note">{stages.length} этап(ов)</span>
+              <span className="meta-note">
+                {stages.length} этап(ов){prefillLoading ? ' • подстановка из сделки...' : ''}
+              </span>
             </div>
           </div>
         </section>
@@ -897,44 +972,26 @@ export function DealCalculatorPage() {
           </button>
           {openSections.request && (
             <div className="accordion-body">
-              <div className="fields request-grid">
+              <div className="fields request-grid request-grid-compact">
                 <CityAutocomplete
-                  key={`origin-${formState.origin}`}
                   label="Пункт погрузки"
                   name="origin"
                   metadataPrefix="origin"
                   required
-                  defaultValue={formState.origin}
-                  onLocationChange={(location, inputValue) => {
-                    updateFormState('origin', location?.city ?? inputValue);
-                  }}
+                  value={formState.origin}
+                  onTextChange={(text) => handleLocationTextChange('origin', text)}
+                  onLocationChange={(location, text) => handleLocationSelect('origin', location, text)}
                 />
-                <label>
-                  Адрес погрузки
-                  <input
-                    value={formState.originAddress}
-                    onChange={(event) => updateFormState('originAddress', event.target.value)}
-                  />
-                </label>
                 <CityAutocomplete
-                  key={`destination-${formState.destination}`}
                   label="Пункт выгрузки"
                   name="destination"
                   metadataPrefix="destination"
                   required
-                  defaultValue={formState.destination}
-                  onLocationChange={(location, inputValue) => {
-                    updateFormState('destination', location?.city ?? inputValue);
-                  }}
+                  value={formState.destination}
+                  onTextChange={(text) => handleLocationTextChange('destination', text)}
+                  onLocationChange={(location, text) => handleLocationSelect('destination', location, text)}
                 />
-                <label>
-                  Адрес выгрузки
-                  <input
-                    value={formState.destinationAddress}
-                    onChange={(event) => updateFormState('destinationAddress', event.target.value)}
-                  />
-                </label>
-                <label>
+                <label className="request-field-cargo">
                   Груз
                   <input
                     value={formState.cargoName}
@@ -943,18 +1000,30 @@ export function DealCalculatorPage() {
                   />
                 </label>
                 <label>
-                  Тип транспортного средства
+                  Вес, кг
                   <input
-                    value={formState.vehicleType}
-                    onChange={(event) => updateFormState('vehicleType', event.target.value)}
-                    placeholder="Контейнеровоз, шаланда, тягач"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={formState.weightKg}
+                    onChange={(event) => updateFormState('weightKg', Number(event.target.value), false)}
+                  />
+                </label>
+                <label>
+                  Объем, м3
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={formState.volumeM3}
+                    onChange={(event) => updateFormState('volumeM3', Number(event.target.value), false)}
                   />
                 </label>
                 <label>
                   Тип контейнера
                   <select
                     value={formState.containerType}
-                    onChange={(event) => updateFormState('containerType', event.target.value)}
+                    onChange={(event) => updateFormState('containerType', event.target.value, false)}
                   >
                     {dictionaries.containerTypes.map((item) => (
                       <option key={item} value={item}>
@@ -967,37 +1036,17 @@ export function DealCalculatorPage() {
                   Статус контейнера
                   <select
                     value={formState.containerStatus}
-                    onChange={(event) => updateFormState('containerStatus', event.target.value)}
+                    onChange={(event) => updateFormState('containerStatus', event.target.value, false)}
                   >
                     <option value="SOC">SOC</option>
                     <option value="COC">COC</option>
                   </select>
                 </label>
                 <label>
-                  Вес, кг
-                  <input
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={formState.weightKg}
-                    onChange={(event) => updateFormState('weightKg', Number(event.target.value))}
-                  />
-                </label>
-                <label>
-                  Объем, м3
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    value={formState.volumeM3}
-                    onChange={(event) => updateFormState('volumeM3', Number(event.target.value))}
-                  />
-                </label>
-                <label>
                   Валюта
                   <select
                     value={formState.currency}
-                    onChange={(event) => updateFormState('currency', event.target.value)}
+                    onChange={(event) => updateFormState('currency', event.target.value, false)}
                   >
                     {dictionaries.currencies.map((item) => (
                       <option key={item} value={item}>
@@ -1095,12 +1144,7 @@ export function DealCalculatorPage() {
                         Тип этапа
                         <select
                           value={stage.type}
-                          onChange={(event) =>
-                            updateStage(stage.id, {
-                              type: event.target.value as StageType,
-                              costAmount: STAGE_BASE_COSTS[event.target.value as StageType]
-                            })
-                          }
+                          onChange={(event) => updateStage(stage.id, { type: event.target.value as StageType })}
                         >
                           {(Object.keys(STAGE_TYPE_LABELS) as StageType[]).map((type) => (
                             <option key={type} value={type}>
@@ -1110,13 +1154,14 @@ export function DealCalculatorPage() {
                         </select>
                       </label>
                       <CityAutocomplete
-                        key={`${stage.id}-from-${stage.fromLocation}`}
                         label="Откуда"
                         name={`${stage.id}-from`}
                         metadataPrefix={`${stage.id}-from`}
-                        defaultValue={stage.fromLocation}
-                        onLocationChange={(location, inputValue) => {
-                          updateStage(stage.id, { fromLocation: location?.city ?? inputValue });
+                        value={stage.fromLocation}
+                        onTextChange={(text) => updateStage(stage.id, { fromLocation: text })}
+                        onLocationChange={(location, text) => {
+                          updateStage(stage.id, { fromLocation: location?.city ?? text });
+                          sendParentResize();
                         }}
                       />
                       <label>
@@ -1127,13 +1172,14 @@ export function DealCalculatorPage() {
                         />
                       </label>
                       <CityAutocomplete
-                        key={`${stage.id}-to-${stage.toLocation}`}
                         label="Куда"
                         name={`${stage.id}-to`}
                         metadataPrefix={`${stage.id}-to`}
-                        defaultValue={stage.toLocation}
-                        onLocationChange={(location, inputValue) => {
-                          updateStage(stage.id, { toLocation: location?.city ?? inputValue });
+                        value={stage.toLocation}
+                        onTextChange={(text) => updateStage(stage.id, { toLocation: text })}
+                        onLocationChange={(location, text) => {
+                          updateStage(stage.id, { toLocation: location?.city ?? text });
+                          sendParentResize();
                         }}
                       />
                       <label>
@@ -1207,9 +1253,7 @@ export function DealCalculatorPage() {
                         min="1"
                         step="1"
                         value={service.quantity}
-                        onChange={(event) =>
-                          handleServiceChange(service.id, { quantity: Number(event.target.value) })
-                        }
+                        onChange={(event) => handleServiceChange(service.id, { quantity: Number(event.target.value) })}
                       />
                     </label>
                     <label>
@@ -1264,14 +1308,14 @@ export function DealCalculatorPage() {
                     min="0"
                     step="0.01"
                     value={formState.marginValue}
-                    onChange={(event) => updateFormState('marginValue', Number(event.target.value))}
+                    onChange={(event) => updateFormState('marginValue', Number(event.target.value), false)}
                   />
                 </label>
                 <label>
                   Режим маржи
                   <select
                     value={formState.marginType}
-                    onChange={(event) => updateFormState('marginType', event.target.value)}
+                    onChange={(event) => updateFormState('marginType', event.target.value, false)}
                   >
                     <option value="percent">%</option>
                     <option value="fixed">Фиксированная сумма</option>
@@ -1323,8 +1367,8 @@ export function DealCalculatorPage() {
               {syncResult && (
                 <div className="sync-result">
                   <p className="success">
-                    Создано: <b>{syncResult.created}</b>, обновлено: <b>{syncResult.updated}</b>,
-                    пропущено: <b>{syncResult.skipped}</b>
+                    Создано: <b>{syncResult.created}</b>, обновлено: <b>{syncResult.updated}</b>, пропущено:{' '}
+                    <b>{syncResult.skipped}</b>
                   </p>
                   {syncResult.warnings.map((warning) => (
                     <p key={warning} className="warning">

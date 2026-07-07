@@ -2,27 +2,30 @@ import {
   type KeyboardEvent,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState
 } from 'react';
 import { useDictionaries } from '../context/DictionariesContext';
 import type { LocationItem } from '../types/dictionaries';
 
-type CityAutocompleteProps = {
-  label: string;
-  name: string;
-  metadataPrefix: string;
-  required?: boolean;
-  defaultValue?: string;
-  onLocationChange?: (location: SelectedLocation, inputValue: string) => void;
-};
-
-type SelectedLocation = {
+export type SelectedLocation = {
   city: string;
   region: string;
   code: string;
   id: string;
 } | null;
+
+type CityAutocompleteProps = {
+  label: string;
+  name: string;
+  metadataPrefix: string;
+  required?: boolean;
+  value?: string;
+  defaultValue?: string;
+  onTextChange?: (text: string) => void;
+  onLocationChange?: (location: SelectedLocation, inputValue: string) => void;
+};
 
 function matchesLocation(location: LocationItem, query: string) {
   const normalized = query.trim().toLowerCase();
@@ -36,12 +39,21 @@ function matchesLocation(location: LocationItem, query: string) {
   );
 }
 
+function sendParentResize() {
+  window.parent?.postMessage(
+    { type: 'tariffcalc:resize', height: document.documentElement.scrollHeight },
+    '*'
+  );
+}
+
 export function CityAutocomplete({
   label,
   name,
   metadataPrefix,
   required,
+  value,
   defaultValue = '',
+  onTextChange,
   onLocationChange
 }: CityAutocompleteProps) {
   const {
@@ -53,7 +65,9 @@ export function CityAutocomplete({
     createLocation,
     upsertLocation
   } = useDictionaries();
-  const [inputValue, setInputValue] = useState(defaultValue);
+  const isControlled = value !== undefined;
+  const [internalValue, setInternalValue] = useState(defaultValue);
+  const inputValue = isControlled ? value ?? '' : internalValue;
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation>(null);
   const [results, setResults] = useState<LocationItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -66,12 +80,52 @@ export function CityAutocomplete({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const debounceRef = useRef<number | null>(null);
+  const requestIdRef = useRef(0);
+  const autoMatchDoneRef = useRef(false);
   const listId = useId();
 
+  const localMatches = useMemo(
+    () => dictionaries.locations.filter((item) => matchesLocation(item, inputValue)),
+    [dictionaries.locations, inputValue]
+  );
+
   useEffect(() => {
-    const localMatches = dictionaries.locations.filter((item) => matchesLocation(item, inputValue));
     setResults(localMatches.slice(0, inputValue.trim().length < 2 ? 200 : 50));
-  }, [dictionaries.locations, inputValue]);
+  }, [localMatches, inputValue]);
+
+  useEffect(() => {
+    if (isControlled) {
+      setInternalValue(value ?? '');
+    }
+  }, [isControlled, value]);
+
+  useEffect(() => {
+    if (!bootstrapLoaded || autoMatchDoneRef.current) {
+      return;
+    }
+
+    const normalized = inputValue.trim().toLowerCase();
+    if (!normalized) {
+      autoMatchDoneRef.current = true;
+      return;
+    }
+
+    const exactMatch =
+      dictionaries.locations.find((item) => item.city.trim().toLowerCase() === normalized) ?? null;
+
+    if (exactMatch) {
+      const nextSelection = {
+        city: exactMatch.city,
+        region: exactMatch.region,
+        code: exactMatch.code,
+        id: exactMatch.id
+      };
+      setSelectedLocation(nextSelection);
+      onLocationChange?.(nextSelection, exactMatch.city);
+    }
+
+    autoMatchDoneRef.current = true;
+  }, [bootstrapLoaded, dictionaries.locations, inputValue, onLocationChange]);
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
@@ -93,11 +147,19 @@ export function CityAutocomplete({
   }, [highlightedIndex]);
 
   useEffect(() => {
+    if (isOpen) {
+      sendParentResize();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     if (debounceRef.current) {
       window.clearTimeout(debounceRef.current);
     }
 
     const query = inputValue.trim();
+    const nextRequestId = ++requestIdRef.current;
+
     if (!query) {
       setLoading(false);
       setResults(dictionaries.locations.slice(0, 200));
@@ -114,14 +176,22 @@ export function CityAutocomplete({
     debounceRef.current = window.setTimeout(() => {
       void searchLocations(query)
         .then((items) => {
+          if (requestIdRef.current !== nextRequestId) {
+            return;
+          }
           setResults(items);
           setHighlightedIndex(items.length > 0 ? 0 : -1);
         })
         .catch(() => {
+          if (requestIdRef.current !== nextRequestId) {
+            return;
+          }
           setResults(dictionaries.locations.filter((item) => matchesLocation(item, query)).slice(0, 50));
         })
         .finally(() => {
-          setLoading(false);
+          if (requestIdRef.current === nextRequestId) {
+            setLoading(false);
+          }
         });
     }, 280);
 
@@ -138,6 +208,13 @@ export function CityAutocomplete({
   const showAddAction =
     inputValue.trim().length > 0 && !loading && results.length === 0 && !hasExactMatch;
 
+  function setTextValue(nextValue: string) {
+    if (!isControlled) {
+      setInternalValue(nextValue);
+    }
+    onTextChange?.(nextValue);
+  }
+
   function handleSelect(location: LocationItem) {
     const nextSelection = {
       city: location.city,
@@ -146,7 +223,7 @@ export function CityAutocomplete({
       id: location.id
     };
     setSelectedLocation(nextSelection);
-    setInputValue(location.city);
+    setTextValue(location.city);
     setResults([location, ...results.filter((item) => item.code !== location.code)]);
     setIsOpen(false);
     setHighlightedIndex(-1);
@@ -154,24 +231,25 @@ export function CityAutocomplete({
     setShowCreateForm(false);
     upsertLocation(location);
     onLocationChange?.(nextSelection, location.city);
+    sendParentResize();
   }
 
-  function handleInputChange(value: string) {
-    setInputValue(value);
+  function handleInputChange(nextValue: string) {
+    setTextValue(nextValue);
     setIsOpen(true);
     setHighlightedIndex(0);
     setInlineError(null);
 
     if (
       selectedLocation &&
-      value.trim().toLowerCase() !== selectedLocation.city.trim().toLowerCase()
+      nextValue.trim().toLowerCase() !== selectedLocation.city.trim().toLowerCase()
     ) {
       setSelectedLocation(null);
-      onLocationChange?.(null, value);
+      onLocationChange?.(null, nextValue);
       return;
     }
 
-    onLocationChange?.(selectedLocation, value);
+    onLocationChange?.(selectedLocation, nextValue);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -210,6 +288,7 @@ export function CityAutocomplete({
       setIsOpen(false);
       setHighlightedIndex(-1);
       setShowCreateForm(false);
+      sendParentResize();
     }
   }
 
@@ -257,68 +336,77 @@ export function CityAutocomplete({
         <input type="hidden" name={`${metadataPrefix}Region`} value={selectedLocation?.region ?? ''} />
         <input type="hidden" name={`${metadataPrefix}City`} value={selectedLocation?.city ?? inputValue} />
 
-        {isOpen && (
-          <div className="city-autocomplete-dropdown" role="listbox" id={listId}>
-            {!bootstrapLoaded && !bootstrapError && <div className="city-autocomplete-state">Загрузка...</div>}
-            {loading && <div className="city-autocomplete-state">Поиск...</div>}
-            {!loading &&
-              results.map((item, index) => (
-                <button
-                  key={item.code}
-                  ref={(element) => {
-                    optionRefs.current[index] = element;
-                  }}
-                  type="button"
-                  className={`city-autocomplete-option${index === highlightedIndex ? ' is-active' : ''}`}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    handleSelect(item);
-                  }}
-                >
-                  <span className="city-autocomplete-primary">
-                    {item.city} — {item.region}
-                  </span>
-                </button>
-              ))}
+        <div
+          className={`city-autocomplete-dropdown${isOpen ? ' is-open' : ''}`}
+          role="listbox"
+          id={listId}
+          aria-hidden={!isOpen}
+        >
+          {!bootstrapLoaded && !bootstrapError && <div className="city-autocomplete-state">Загрузка...</div>}
+          {loading && <div className="city-autocomplete-state">Поиск...</div>}
+          {!loading &&
+            results.map((item, index) => (
+              <button
+                key={item.code}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                type="button"
+                className={`city-autocomplete-option${index === highlightedIndex ? ' is-active' : ''}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  handleSelect(item);
+                }}
+              >
+                <span className="city-autocomplete-primary">
+                  {item.city} — {item.region}
+                </span>
+              </button>
+            ))}
 
-            {!loading && results.length === 0 && (
-              <div className="city-autocomplete-state">Ничего не найдено</div>
-            )}
+          {!loading && results.length === 0 && (
+            <div className="city-autocomplete-state">Ничего не найдено</div>
+          )}
 
-            {!loading && showAddAction && (
-              <div className="city-autocomplete-create">
-                <button
-                  type="button"
-                  className="city-autocomplete-add"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    setShowCreateForm((current) => !current);
-                    setCreateRegion('');
-                    setInlineError(null);
-                  }}
-                >
-                  + Добавить в справочник
-                </button>
+          {!loading && showAddAction && (
+            <div className="city-autocomplete-create">
+              <button
+                type="button"
+                className="city-autocomplete-add"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  setShowCreateForm((current) => !current);
+                  setCreateRegion('');
+                  setInlineError(null);
+                  sendParentResize();
+                }}
+              >
+                + Добавить в справочник
+              </button>
 
-                {showCreateForm && (
-                  <div className="city-autocomplete-create-form">
-                    <input value={inputValue} disabled />
-                    <input
-                      value={createRegion}
-                      placeholder="Субъект РФ"
-                      onChange={(event) => setCreateRegion(event.target.value)}
-                    />
-                    <div className="city-autocomplete-create-actions">
-                      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={handleCreateLocation} disabled={creating}>
-                        {creating ? 'Сохранение...' : 'Сохранить'}
-                      </button>
-                    </div>
+              {showCreateForm && (
+                <div className="city-autocomplete-create-form">
+                  <input value={inputValue} disabled />
+                  <input
+                    value={createRegion}
+                    placeholder="Субъект РФ"
+                    onChange={(event) => setCreateRegion(event.target.value)}
+                  />
+                  <div className="city-autocomplete-create-actions">
+                    <button
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={handleCreateLocation}
+                      disabled={creating}
+                    >
+                      {creating ? 'Сохранение...' : 'Сохранить'}
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {locationsOfflineMode && <span className="muted">Офлайн режим справочника</span>}

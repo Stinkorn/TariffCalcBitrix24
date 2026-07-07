@@ -372,6 +372,14 @@ export class BitrixController {
     return this.bitrixPlacementService.getDealCounterparty(dealId, portalDomain);
   }
 
+  @Get('deals/:dealId/prefill')
+  async getDealPrefill(
+    @Param('dealId') dealId: string,
+    @Query('portalDomain') portalDomain?: string
+  ) {
+    return this.bitrixPlacementService.getDealPrefill(dealId, portalDomain);
+  }
+
   @Get('debug/context')
   debugContext(@Query() query: Record<string, unknown>) {
     const safeQuery = sanitizeContext(query);

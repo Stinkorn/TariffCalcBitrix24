@@ -163,15 +163,26 @@ button:disabled {
 
 .city-autocomplete-dropdown {
   position: absolute;
-  z-index: 20;
+  z-index: 1000;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
   max-height: 240px;
-  overflow: auto;
+  overflow-y: auto;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.city-autocomplete-dropdown.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .city-autocomplete-option,
@@ -425,6 +436,14 @@ th {
   grid-template-columns: 1fr;
 }
 
+.request-grid-compact {
+  align-items: start;
+}
+
+.request-field-cargo {
+  min-width: 0;
+}
+
 .template-row {
   display: grid;
   gap: 8px;
@@ -604,6 +623,14 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .request-grid-compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .request-field-cargo {
+    grid-column: span 1;
+  }
+
   .service-card {
     grid-template-columns: minmax(180px, 1.1fr) repeat(3, minmax(0, 1fr));
   }
@@ -624,5 +651,21 @@ th {
 
   .request-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .request-grid-compact {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .request-grid-compact .city-autocomplete-label:nth-child(1) {
+    grid-column: span 3;
+  }
+
+  .request-grid-compact .city-autocomplete-label:nth-child(2) {
+    grid-column: span 3;
+  }
+
+  .request-field-cargo {
+    grid-column: span 2;
   }
 }
