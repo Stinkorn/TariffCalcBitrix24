@@ -14,6 +14,7 @@ type CityAutocompleteProps = {
   metadataPrefix: string;
   required?: boolean;
   defaultValue?: string;
+  onLocationChange?: (location: SelectedLocation, inputValue: string) => void;
 };
 
 type SelectedLocation = {
@@ -40,7 +41,8 @@ export function CityAutocomplete({
   name,
   metadataPrefix,
   required,
-  defaultValue = ''
+  defaultValue = '',
+  onLocationChange
 }: CityAutocompleteProps) {
   const {
     dictionaries,
@@ -137,12 +139,13 @@ export function CityAutocomplete({
     inputValue.trim().length > 0 && !loading && results.length === 0 && !hasExactMatch;
 
   function handleSelect(location: LocationItem) {
-    setSelectedLocation({
+    const nextSelection = {
       city: location.city,
       region: location.region,
       code: location.code,
       id: location.id
-    });
+    };
+    setSelectedLocation(nextSelection);
     setInputValue(location.city);
     setResults([location, ...results.filter((item) => item.code !== location.code)]);
     setIsOpen(false);
@@ -150,6 +153,7 @@ export function CityAutocomplete({
     setInlineError(null);
     setShowCreateForm(false);
     upsertLocation(location);
+    onLocationChange?.(nextSelection, location.city);
   }
 
   function handleInputChange(value: string) {
@@ -163,7 +167,11 @@ export function CityAutocomplete({
       value.trim().toLowerCase() !== selectedLocation.city.trim().toLowerCase()
     ) {
       setSelectedLocation(null);
+      onLocationChange?.(null, value);
+      return;
     }
+
+    onLocationChange?.(selectedLocation, value);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -268,7 +276,7 @@ export function CityAutocomplete({
                   }}
                 >
                   <span className="city-autocomplete-primary">
-                    {item.city} - {item.region}
+                    {item.city} — {item.region}
                   </span>
                 </button>
               ))}
