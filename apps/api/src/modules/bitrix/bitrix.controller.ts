@@ -222,16 +222,94 @@ export class BitrixController {
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Калькулятор перевозки</title>
+    <script src="//api.bitrix24.com/api/v1/"></script>
     <style>
-      html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
-      body { overflow: hidden; }
-      iframe { width: 100%; height: 100vh; min-height: 100vh; border: 0; display: block; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100%;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      iframe {
+        display: block;
+        width: 100%;
+        border: 0;
+        min-height: 1200px;
+      }
     </style>
   </head>
   <body>
     ${payloadKeysComment}
-    <iframe src="${frontendUrl}" title="Калькулятор перевозки"></iframe>
+    <iframe id="deal-calculator-frame" src="${frontendUrl}" title="Калькулятор перевозки"></iframe>
+    <script>
+      (function () {
+        var iframe = document.getElementById('deal-calculator-frame');
+        var minHeight = 700;
+        var maxHeight = 3000;
+
+        function clampHeight(value) {
+          var numeric = Number(value);
+          if (!Number.isFinite(numeric)) {
+            return minHeight;
+          }
+
+          return Math.max(minHeight, Math.min(maxHeight, Math.round(numeric)));
+        }
+
+        function measureHeight() {
+          var candidates = [
+            window.innerHeight,
+            document.documentElement ? document.documentElement.clientHeight : 0,
+            document.body ? document.body.scrollHeight : 0
+          ];
+          var maxValue = 0;
+          for (var i = 0; i < candidates.length; i += 1) {
+            var candidate = Number(candidates[i]) || 0;
+            if (candidate > maxValue) {
+              maxValue = candidate;
+            }
+          }
+          return clampHeight(maxValue);
+        }
+
+        function applyHeight(height) {
+          var nextHeight = clampHeight(height);
+          iframe.style.height = nextHeight + 'px';
+
+          if (window.BX24 && typeof window.BX24.resizeWindow === 'function') {
+            var width = document.body && document.body.scrollWidth ? document.body.scrollWidth : 1200;
+            window.BX24.resizeWindow(width, nextHeight);
+          }
+        }
+
+        function scheduleResize() {
+          var delays = [0, 300, 1000, 2000];
+          for (var i = 0; i < delays.length; i += 1) {
+            window.setTimeout(function () {
+              applyHeight(measureHeight());
+            }, delays[i]);
+          }
+        }
+
+        iframe.addEventListener('load', scheduleResize);
+        window.addEventListener('resize', scheduleResize);
+        window.addEventListener('message', function (event) {
+          var data = event.data;
+          if (!data || typeof data !== 'object' || data.type !== 'tariffcalc:resize') {
+            return;
+          }
+
+          applyHeight(data.height);
+        });
+
+        scheduleResize();
+      })();
+    </script>
   </body>
 </html>`;
   }

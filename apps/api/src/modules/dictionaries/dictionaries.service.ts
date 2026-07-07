@@ -22,11 +22,22 @@ type LocationSeedItem = {
 type BitrixListElement = {
   ID?: string | number;
   NAME?: string;
+  name?: string;
+  TITLE?: string;
   SORT?: string | number;
   ACTIVE?: string | boolean;
   TIMESTAMP_X?: string;
   PROPERTY_REGION?: string | string[];
+  fields?: Record<string, unknown>;
+  property?: Record<string, unknown>;
+  PROPERTY?: Record<string, unknown>;
+  PROPERTIES?: Record<string, unknown>;
   [key: string]: unknown;
+};
+
+type BitrixFieldCandidate = {
+  key: string;
+  value: string;
 };
 
 const DEFAULT_DICTIONARIES = {
@@ -336,6 +347,56 @@ export class DictionariesService {
     };
   }
 
+  async debugLocationsBitrixSync() {
+    const listId = this.configService.get<string>('BITRIX_LOCATIONS_LIST_ID')?.trim();
+    if (!listId) {
+      throw new BadRequestException('BITRIX_LOCATIONS_LIST_ID is not configured');
+    }
+
+    const auth = await this.bitrixPlacementService.getPortalAuth();
+    this.bitrixPlacementService.assertListsScope(auth.scope);
+
+    const iblockTypeId =
+      this.configService.get<string>('BITRIX_LOCATIONS_LIST_IBLOCK_TYPE_ID')?.trim() || 'lists';
+    const cityField =
+      this.configService.get<string>('BITRIX_LOCATIONS_CITY_FIELD')?.trim() || 'NAME';
+    const regionField =
+      this.configService.get<string>('BITRIX_LOCATIONS_REGION_FIELD')?.trim() || 'PROPERTY_REGION';
+
+    let response: unknown;
+    try {
+      response = await this.bitrixRestClient.callMethod(auth.domain, auth.accessToken, 'lists.element.get', {
+        IBLOCK_TYPE_ID: iblockTypeId,
+        IBLOCK_ID: listId,
+        FILTER: {},
+        SORT_BY: 'SORT',
+        SORT_ORDER: 'ASC',
+        NAV_PARAMS: { nPageSize: 5 },
+        start: 0
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bitrix list debug failed';
+      if (/higher privileges than provided by the access token/i.test(message)) {
+        throw new BadRequestException(
+          'Добавьте право lists в локальном приложении Bitrix24 и переустановите приложение.'
+        );
+      }
+      throw new BadGatewayException(`Не удалось получить список локаций из Bitrix24: ${message}`);
+    }
+
+    const elements = this.extractBitrixElements(response).slice(0, 5);
+
+    return {
+      success: true,
+      listId,
+      iblockTypeId,
+      configuredCityField: cityField,
+      configuredRegionField: regionField,
+      totalFetched: elements.length,
+      items: elements.map((element) => this.toBitrixLocationDebugDto(element, cityField, regionField))
+    };
+  }
+
   private async listLocations(search?: string) {
     const trimmedSearch = search?.trim();
     const isSearch = Boolean(trimmedSearch);
@@ -401,6 +462,164 @@ export class DictionariesService {
     }
 
     return this.readFirstString(element[fieldName]);
+  }
+
+  private toBitrixLocationDebugDto(
+    element: BitrixListElement,
+    cityField: string,
+    regionField: string
+  ) {
+    const fields = this.readRecord(element.fields);
+    const property = this.readRecord(element.property) ?? this.readRecord(element.PROPERTY) ?? this.readRecord(element.PROPERTIES);
+    const cityCandidates = this.findBitrixFieldCandidates(element, ['NAME', 'name', 'TITLE', 'Город'], ['Город']);
+    const regionCandidates = this.findBitrixFieldCandidates(element, ['Субъект РФ'], ['Субъект РФ']);
+
+    return {
+      id: this.readFirstString(element.ID),
+      topLevelKeys: this.safeKeys(element),
+      fieldsKeys: fields ? this.safeKeys(fields) : [],
+      propertyKeys: property ? this.safeKeys(property) : [],
+      cityCandidates,
+      regionCandidates,
+      selectedCity: this.readBitrixField(element, cityField).trim(),
+      selectedRegion: this.readBitrixField(element, regionField).trim()
+    };
+  }
+
+  private findBitrixFieldCandidates(
+    element: BitrixListElement,
+    directKeys: string[],
+    labels: string[]
+  ): BitrixFieldCandidate[] {
+    const candidates: BitrixFieldCandidate[] = [];
+
+    for (const key of directKeys) {
+      const value = this.readFirstString((element as Record<string, unknown>)[key]);
+      if (value) {
+        candidates.push({ key, value });
+      }
+    }
+
+    for (const nestedKey of ['fields', 'property', 'PROPERTY', 'PROPERTIES']) {
+      const nested = this.readRecord((element as Record<string, unknown>)[nestedKey]);
+      if (!nested) {
+        continue;
+      }
+
+      for (const key of directKeys) {
+        const value = this.readFirstString(nested[key]);
+        if (value) {
+          candidates.push({ key: `${nestedKey}.${key}`, value });
+        }
+      }
+    }
+
+    const records = this.collectBitrixPropertyRecords(element);
+    for (const { key, value } of records) {
+      const propertyCode = key.split('.').pop() ?? key;
+      if (!propertyCode.startsWith('PROPERTY_')) {
+        continue;
+      }
+
+      const propertyName = this.readBitrixPropertyName(value);
+      const propertyValue = this.readBitrixPropertyValue(value);
+      const keyMatchesLabel = labels.some((label) => propertyCode === label || propertyCode.includes(label));
+      const nameMatchesLabel = labels.some((label) => propertyName === label);
+      const valueMatchesLabel = labels.some((label) => propertyValue === label);
+
+      if (keyMatchesLabel || nameMatchesLabel || valueMatchesLabel) {
+        candidates.push({
+          key: propertyName ? `${key} (${propertyName})` : key,
+          value: propertyValue
+        });
+      }
+    }
+
+    return this.dedupeCandidates(candidates);
+  }
+
+  private collectBitrixPropertyRecords(element: BitrixListElement) {
+    const records: Array<{ key: string; value: unknown }> = [];
+    const topLevel = element as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(topLevel)) {
+      if (key.startsWith('PROPERTY_')) {
+        records.push({ key, value });
+      }
+    }
+
+    for (const nestedKey of ['fields', 'property', 'PROPERTY', 'PROPERTIES']) {
+      const nested = this.readRecord(topLevel[nestedKey]);
+      if (!nested) {
+        continue;
+      }
+
+      for (const [key, value] of Object.entries(nested)) {
+        if (key.startsWith('PROPERTY_')) {
+          records.push({ key: `${nestedKey}.${key}`, value });
+        }
+      }
+    }
+
+    return records;
+  }
+
+  private readBitrixPropertyName(value: unknown): string {
+    const record = this.readRecord(value);
+    if (!record) {
+      return '';
+    }
+
+    return this.readFirstString(record.NAME) || this.readFirstString(record.name) || this.readFirstString(record.TITLE);
+  }
+
+  private readBitrixPropertyValue(value: unknown): string {
+    if (Array.isArray(value)) {
+      return this.readFirstString(value.map((item) => this.readBitrixPropertyValue(item)));
+    }
+
+    const record = this.readRecord(value);
+    if (!record) {
+      return this.readFirstString(value);
+    }
+
+    return (
+      this.readFirstString(record.VALUE) ||
+      this.readFirstString(record.value) ||
+      this.readFirstString(record.TEXT) ||
+      this.readFirstString(record.text) ||
+      this.readFirstString(record.DISPLAY_VALUE) ||
+      this.readFirstString(record.displayValue) ||
+      this.readFirstString(Object.values(record))
+    );
+  }
+
+  private readRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private dedupeCandidates(candidates: BitrixFieldCandidate[]) {
+    const seen = new Set<string>();
+    return candidates.filter((candidate) => {
+      const key = `${candidate.key}\n${candidate.value}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private safeKeys(record: Record<string, unknown>) {
+    return Object.keys(record).filter((key) => !this.isSensitiveKey(key));
+  }
+
+  private isSensitiveKey(key: string) {
+    return /access[_-]?token|refresh[_-]?token|client[_-]?secret|application[_-]?token|auth/i.test(key);
   }
 
   private readFirstString(value: unknown): string {

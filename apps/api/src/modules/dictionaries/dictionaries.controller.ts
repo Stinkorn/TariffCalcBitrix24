@@ -37,4 +37,9 @@ export class DictionariesController {
   syncLocationsFromBitrix() {
     return this.dictionariesService.syncLocationsFromBitrix();
   }
+
+  @Get('locations/sync/bitrix/debug')
+  debugLocationsBitrixSync() {
+    return this.dictionariesService.debugLocationsBitrixSync();
+  }
 }

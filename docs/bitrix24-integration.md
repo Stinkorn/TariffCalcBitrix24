@@ -52,6 +52,12 @@
 - отдать React entrypoint или HTML shell
 - передать frontend необходимые bootstrap-данные
 
+Примечание по высоте placement:
+
+- высота вкладки Bitrix24 управляется через `postMessage` из frontend и `BX24.resizeWindow(...)` в shell `/bitrix/deal-tab`
+- frontend отправляет `type: "tariffcalc:resize"` с вычисленной высотой документа
+- shell принимает только сообщения `tariffcalc:resize`, меняет высоту iframe и вызывает `BX24.resizeWindow`
+
 ## Установка приложения
 
 ### Endpoint установки

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CityAutocomplete } from '../components/CityAutocomplete';
 import { useDictionaries } from '../context/DictionariesContext';
@@ -81,6 +81,7 @@ function formatMoney(value: number | string, currency: string) {
 
 export function DealCalculatorPage() {
   const { apiBaseUrl, dictionaries, bootstrapError, refreshBootstrap } = useDictionaries();
+  const pageRef = useRef<HTMLElement | null>(null);
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
   const initialDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? '';
@@ -126,6 +127,100 @@ export function DealCalculatorPage() {
   const [counterparty, setCounterparty] = useState<CounterpartyResponse | null>(null);
   const [counterpartyError, setCounterpartyError] = useState<string | null>(null);
   const [counterpartyLoading, setCounterpartyLoading] = useState(false);
+
+  useEffect(() => {
+    function sendResize() {
+      const root = document.documentElement;
+      const body = document.body;
+      const pageHeight = pageRef.current?.scrollHeight ?? 0;
+      const height = Math.max(
+        root?.scrollHeight ?? 0,
+        root?.offsetHeight ?? 0,
+        body?.scrollHeight ?? 0,
+        body?.offsetHeight ?? 0,
+        pageHeight,
+        window.innerHeight
+      );
+
+      window.parent?.postMessage(
+        {
+          type: 'tariffcalc:resize',
+          height
+        },
+        '*'
+      );
+    }
+
+    const delayed = [0, 100, 300, 1000, 2000].map((delay) => window.setTimeout(sendResize, delay));
+    const handleResize = () => sendResize();
+    const handleChange = () => sendResize();
+
+    window.addEventListener('resize', handleResize);
+    document.addEventListener('input', handleChange, true);
+    document.addEventListener('change', handleChange, true);
+
+    const observerTarget = pageRef.current ?? document.body;
+    const observer = new MutationObserver(() => {
+      window.requestAnimationFrame(sendResize);
+    });
+    observer.observe(observerTarget, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true
+    });
+
+    return () => {
+      for (const timeoutId of delayed) {
+        window.clearTimeout(timeoutId);
+      }
+      observer.disconnect();
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('input', handleChange, true);
+      document.removeEventListener('change', handleChange, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const root = document.documentElement;
+      const body = document.body;
+      const height = Math.max(
+        root?.scrollHeight ?? 0,
+        root?.offsetHeight ?? 0,
+        body?.scrollHeight ?? 0,
+        body?.offsetHeight ?? 0,
+        pageRef.current?.scrollHeight ?? 0,
+        window.innerHeight
+      );
+
+      window.parent?.postMessage(
+        {
+          type: 'tariffcalc:resize',
+          height
+        },
+        '*'
+      );
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    dictionaries.locations.length,
+    bootstrapError,
+    result,
+    history.length,
+    error,
+    timelineMessage,
+    syncResult,
+    syncError,
+    syncingLocations,
+    counterparty,
+    counterpartyError,
+    counterpartyLoading,
+    loading,
+    saving,
+    writingTimeline
+  ]);
 
   useEffect(() => {
     void loadHistory(initialDealId);
@@ -438,7 +533,7 @@ export function DealCalculatorPage() {
   }
 
   return (
-    <main className="page">
+    <main ref={pageRef} className="page">
       <section className="shell">
         <header className="page-header">
           <h1>Калькулятор перевозки</h1>
