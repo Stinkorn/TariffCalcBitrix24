@@ -135,6 +135,30 @@ type BitrixCrmUserField = {
   FIELD_NAME?: unknown;
   USER_TYPE_ID?: unknown;
   LIST?: unknown;
+  SETTINGS?: unknown;
+  SETTINGS_1?: unknown;
+  SETTINGS_2?: unknown;
+};
+
+type ResolvedUserFieldValue = {
+  rawValue: string | string[] | null;
+  rawValueForResponse: string;
+  resolvedValue: string;
+  resolved: boolean;
+  metadata: {
+    fieldName: string;
+    userTypeId: string;
+    listCount: number;
+    settings?: Record<string, unknown> | null;
+    iblockId?: string | null;
+    iblockTypeId?: string | null;
+    resolverMethod?: string | null;
+    resolveError?: string | null;
+  } | null;
+  selectedItems: Array<{
+    id: string;
+    value: string;
+  }>;
 };
 
 @Injectable()
@@ -415,6 +439,7 @@ export class BitrixPlacementService {
 
   async getDealPrefill(dealId: string, portalDomain?: string): Promise<BitrixDealPrefillResponse> {
     const auth = await this.getPortalAuth(portalDomain);
+    const iblockElementCache = new Map<string, string>();
 
     try {
       const dealResponse = await this.callBitrixMethod(
@@ -425,22 +450,30 @@ export class BitrixPlacementService {
 
       const deal = dealResponse?.result ?? {};
       const userFields = await this.getDealUserFields(auth);
-      const cargo = this.resolveCrmUserFieldEnumValue(
+      const cargo = await this.resolveCrmUserFieldValue(
+        auth,
+        iblockElementCache,
         userFields,
         'UF_CRM_1779800821',
         deal.UF_CRM_1779800821
       );
-      const vehicle = this.resolveCrmUserFieldEnumValue(
+      const vehicle = await this.resolveCrmUserFieldValue(
+        auth,
+        iblockElementCache,
         userFields,
         'UF_CRM_1744631495248',
         deal.UF_CRM_1744631495248
       );
-      const origin = this.resolveCrmUserFieldEnumValue(
+      const origin = await this.resolveCrmUserFieldValue(
+        auth,
+        iblockElementCache,
         userFields,
         'UF_CRM_1742553879',
         deal.UF_CRM_1742553879
       );
-      const destination = this.resolveCrmUserFieldEnumValue(
+      const destination = await this.resolveCrmUserFieldValue(
+        auth,
+        iblockElementCache,
         userFields,
         'UF_CRM_1742558888',
         deal.UF_CRM_1742558888
@@ -473,6 +506,7 @@ export class BitrixPlacementService {
     portalDomain?: string
   ): Promise<BitrixDealPrefillDebugResponse> {
     const auth = await this.getPortalAuth(portalDomain);
+    const iblockElementCache = new Map<string, string>();
 
     try {
       const dealResponse = await this.callBitrixMethod(
@@ -492,23 +526,25 @@ export class BitrixPlacementService {
 
       return {
         dealId,
-        fields: fieldNames.map((fieldName) => {
-          const resolved = this.resolveCrmUserFieldEnumValue(userFields, fieldName, deal[fieldName]);
-          return {
-            fieldName,
-            rawValue: resolved.rawValue,
-            resolvedValue: resolved.resolvedValue,
-            resolved: resolved.resolved,
-            metadata: resolved.metadata
-              ? {
-                  fieldName: resolved.metadata.fieldName,
-                  userTypeId: resolved.metadata.userTypeId,
-                  listCount: resolved.metadata.listCount
-                }
-              : null,
-            selectedItems: resolved.selectedItems
-          };
-        })
+        fields: await Promise.all(
+          fieldNames.map(async (fieldName) => {
+            const resolved = await this.resolveCrmUserFieldValue(
+              auth,
+              iblockElementCache,
+              userFields,
+              fieldName,
+              deal[fieldName]
+            );
+            return {
+              fieldName,
+              rawValue: resolved.rawValue,
+              resolvedValue: resolved.resolvedValue,
+              resolved: resolved.resolved,
+              metadata: resolved.metadata,
+              selectedItems: resolved.selectedItems
+            };
+          })
+        )
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bitrix deal prefill debug request failed';
@@ -630,6 +666,146 @@ export class BitrixPlacementService {
       result?: unknown;
     };
     return Array.isArray(response.result) ? (response.result as BitrixCrmUserField[]) : [];
+  }
+
+  private async resolveCrmUserFieldValue(
+    auth: BitrixPlacementAuth,
+    iblockElementCache: Map<string, string>,
+    userFields: BitrixCrmUserField[],
+    fieldName: string,
+    rawValue: unknown
+  ): Promise<ResolvedUserFieldValue> {
+    const baseResolved = this.resolveCrmUserFieldEnumValue(userFields, fieldName, rawValue);
+    const metadata = baseResolved.metadata;
+
+    if (!metadata || metadata.userTypeId.toLowerCase() !== 'iblock_element') {
+      return baseResolved;
+    }
+
+    const field = userFields.find((item) => this.readScalarString(item.FIELD_NAME) === fieldName);
+    const settings = this.extractUserFieldSettings(field);
+    const iblockId = this.findSettingValue(settings, ['IBLOCK_ID', 'iblockId', 'IBlockId']);
+    const iblockTypeId =
+      this.findSettingValue(settings, ['IBLOCK_TYPE_ID', 'iblockTypeId', 'IBlockTypeId']) ?? 'lists';
+    const normalizedIds = this.readStringArray(rawValue).filter((item) => item !== '0');
+    const debugMetadata = {
+      ...metadata,
+      settings,
+      iblockId,
+      iblockTypeId,
+      resolverMethod: null as string | null,
+      resolveError: null as string | null
+    };
+
+    if (!iblockId) {
+      return {
+        ...baseResolved,
+        metadata: {
+          ...debugMetadata,
+          resolveError: 'IBLOCK_ID not found in user field settings'
+        },
+        selectedItems: []
+      };
+    }
+
+    try {
+      const selectedItems = await this.resolveIblockElementItems(
+        auth,
+        iblockElementCache,
+        iblockId,
+        iblockTypeId,
+        normalizedIds
+      );
+
+      if (selectedItems.length === 0) {
+        return {
+          ...baseResolved,
+          metadata: {
+            ...debugMetadata,
+            resolverMethod: 'lists.element.get',
+            resolveError: 'No iblock elements resolved for provided IDs'
+          },
+          selectedItems: []
+        };
+      }
+
+      return {
+        rawValue: Array.isArray(rawValue) ? normalizedIds : normalizedIds[0] ?? null,
+        rawValueForResponse: normalizedIds.join(', '),
+        resolvedValue: selectedItems.map((item) => item.value).join(', '),
+        resolved: true,
+        metadata: {
+          ...debugMetadata,
+          resolverMethod: 'lists.element.get'
+        },
+        selectedItems
+      };
+    } catch (error) {
+      return {
+        ...baseResolved,
+        metadata: {
+          ...debugMetadata,
+          resolverMethod: 'lists.element.get',
+          resolveError: error instanceof Error ? error.message : 'Unknown iblock_element resolve error'
+        },
+        selectedItems: []
+      };
+    }
+  }
+
+  private async resolveIblockElementItems(
+    auth: BitrixPlacementAuth,
+    iblockElementCache: Map<string, string>,
+    iblockId: string,
+    iblockTypeId: string,
+    ids: string[]
+  ) {
+    const uniqueIds = Array.from(new Set(ids));
+    const missingIds = uniqueIds.filter((id) => !iblockElementCache.has(`${iblockId}:${id}`));
+
+    if (missingIds.length > 0) {
+      const response = await this.callBitrixMethod(
+        'lists.element.get',
+        {
+          IBLOCK_TYPE_ID: iblockTypeId,
+          IBLOCK_ID: iblockId,
+          FILTER: {
+            ID: missingIds
+          }
+        },
+        auth
+      ) as { result?: unknown };
+
+      for (const item of this.extractIblockElements(response.result)) {
+        const id = this.readScalarString(item.ID);
+        const value = this.readScalarString(item.NAME);
+        if (!id || !value) {
+          continue;
+        }
+        iblockElementCache.set(`${iblockId}:${id}`, value);
+      }
+    }
+
+    return uniqueIds
+      .map((id) => {
+        const value = iblockElementCache.get(`${iblockId}:${id}`);
+        return value ? { id, value } : null;
+      })
+      .filter((item): item is { id: string; value: string } => Boolean(item));
+  }
+
+  private extractIblockElements(result: unknown) {
+    if (Array.isArray(result)) {
+      return result.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>;
+    }
+
+    if (!result || typeof result !== 'object') {
+      return [];
+    }
+
+    return Object.values(result as Record<string, unknown>).filter(
+      (item) => item && typeof item === 'object'
+    ) as Array<Record<string, unknown>>;
   }
 
   async getPortalAuth(
@@ -854,11 +1030,76 @@ export class BitrixPlacementService {
     return scalar ? [scalar] : [];
   }
 
+  private extractUserFieldSettings(field?: BitrixCrmUserField) {
+    if (!field || typeof field !== 'object') {
+      return null;
+    }
+
+    for (const key of ['SETTINGS', 'settings', 'SETTINGS_1', 'SETTINGS_2']) {
+      const value = (field as Record<string, unknown>)[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return this.toSafeObject(value as Record<string, unknown>);
+      }
+    }
+
+    return null;
+  }
+
+  private findSettingValue(
+    settings: Record<string, unknown> | null,
+    keys: string[]
+  ) {
+    if (!settings) {
+      return null;
+    }
+
+    for (const key of keys) {
+      const value = this.readScalarString(settings[key]);
+      if (value) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  private toSafeObject(record: Record<string, unknown>) {
+    const safe: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (this.isSensitiveKey(key)) {
+        continue;
+      }
+
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        safe[key] = this.toSafeObject(value as Record<string, unknown>);
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        safe[key] = value.map((item) => {
+          if (item && typeof item === 'object') {
+            return this.toSafeObject(item as Record<string, unknown>);
+          }
+          return item;
+        });
+        continue;
+      }
+
+      safe[key] = value;
+    }
+
+    return safe;
+  }
+
+  private isSensitiveKey(key: string) {
+    return /access[_-]?token|refresh[_-]?token|client[_-]?secret|webhook|auth/i.test(key);
+  }
+
   private resolveCrmUserFieldEnumValue(
     userFields: BitrixCrmUserField[],
     fieldName: string,
     rawValue: unknown
-  ) {
+  ): ResolvedUserFieldValue {
     const field = userFields.find((item) => this.readScalarString(item.FIELD_NAME) === fieldName);
     const userTypeId = this.readScalarString(field?.USER_TYPE_ID)?.toLowerCase() ?? '';
     const rawItems = this.readStringArray(rawValue);
@@ -882,7 +1123,12 @@ export class BitrixPlacementService {
       ? {
           fieldName,
           userTypeId: this.readScalarString(field.USER_TYPE_ID) ?? '',
-          listCount: listItems.length
+          listCount: listItems.length,
+          settings: null,
+          iblockId: null,
+          iblockTypeId: null,
+          resolverMethod: userTypeId === 'enumeration' || userTypeId === 'list' ? 'enum-list' : null,
+          resolveError: null
         }
       : null;
 

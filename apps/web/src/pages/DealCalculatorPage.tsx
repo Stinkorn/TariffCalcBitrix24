@@ -171,6 +171,12 @@ function buildStageTitle(type: StageType, index: number) {
   return `Этап ${index + 1} — ${STAGE_TYPE_LABELS[type]}`;
 }
 
+function isPrefillDirtyKey(
+  key: keyof FormState
+): key is 'cargoName' | 'vehicleType' | 'origin' | 'destination' {
+  return key === 'cargoName' || key === 'vehicleType' || key === 'origin' || key === 'destination';
+}
+
 function sendParentResize() {
   window.parent?.postMessage(
     { type: 'tariffcalc:resize', height: document.documentElement.scrollHeight },
@@ -615,7 +621,7 @@ export function DealCalculatorPage() {
     value: FormState[K],
     markDirty = true
   ) {
-    if (markDirty && (key === 'cargoName' || key === 'vehicleType' || key === 'origin' || key === 'destination')) {
+    if (markDirty && isPrefillDirtyKey(key)) {
       fieldDirtyRef.current[key] = true;
     }
     setFormState((current) => ({ ...current, [key]: value }));

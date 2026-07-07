@@ -110,22 +110,42 @@ export function CityAutocomplete({
       return;
     }
 
-    const exactMatch =
+    const localMatch =
       dictionaries.locations.find((item) => item.city.trim().toLowerCase() === normalized) ?? null;
 
-    if (exactMatch) {
+    if (localMatch) {
       const nextSelection = {
-        city: exactMatch.city,
-        region: exactMatch.region,
-        code: exactMatch.code,
-        id: exactMatch.id
+        city: localMatch.city,
+        region: localMatch.region,
+        code: localMatch.code,
+        id: localMatch.id
       };
       setSelectedLocation(nextSelection);
-      onLocationChange?.(nextSelection, exactMatch.city);
+      onLocationChange?.(nextSelection, localMatch.city);
+      autoMatchDoneRef.current = true;
+      return;
     }
 
     autoMatchDoneRef.current = true;
-  }, [bootstrapLoaded, dictionaries.locations, inputValue, onLocationChange]);
+    void searchLocations(inputValue).then((items) => {
+      const remoteMatch =
+        items.find((item) => item.city.trim().toLowerCase() === normalized) ?? null;
+      if (!remoteMatch) {
+        return;
+      }
+
+      const nextSelection = {
+        city: remoteMatch.city,
+        region: remoteMatch.region,
+        code: remoteMatch.code,
+        id: remoteMatch.id
+      };
+      setSelectedLocation(nextSelection);
+      onLocationChange?.(nextSelection, remoteMatch.city);
+    }).catch(() => {
+      // ignore auto-match errors
+    });
+  }, [bootstrapLoaded, dictionaries.locations, inputValue, onLocationChange, searchLocations]);
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
