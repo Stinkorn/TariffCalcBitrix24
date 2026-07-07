@@ -83,6 +83,12 @@ type TimelineCommentBody = {
 
 @Controller('bitrix')
 export class BitrixController {
+  private readonly dealTabBuildVersion =
+    process.env.APP_BUILD_ID?.trim() ||
+    process.env.RENDER_GIT_COMMIT?.trim() ||
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
+    Date.now().toString();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly bitrixPlacementService: BitrixPlacementService
@@ -183,7 +189,11 @@ export class BitrixController {
 
   @Get('deal-tab')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  dealTab(@Query() query: Record<string, unknown>) {
+  dealTab(
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: any
+  ) {
+    this.applyNoCacheHeaders(response);
     return this.renderDealTabResponse(query, {});
   }
 
@@ -192,8 +202,10 @@ export class BitrixController {
   @Header('Content-Type', 'text/html; charset=utf-8')
   dealTabPost(
     @Query() query: Record<string, unknown>,
-    @Body() body: DealTabPayload
+    @Body() body: DealTabPayload,
+    @Res({ passthrough: true }) response: any
   ) {
+    this.applyNoCacheHeaders(response);
     return this.renderDealTabResponse(query, body);
   }
 
@@ -406,8 +418,18 @@ export class BitrixController {
     if (portalDomain) {
       frontendUrl.searchParams.set('portal', portalDomain);
     }
+    frontendUrl.searchParams.set('build', this.dealTabBuildVersion);
 
     return frontendUrl.toString();
+  }
+
+  private applyNoCacheHeaders(response: any) {
+    response.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    );
+    response.setHeader('Pragma', 'no-cache');
+    response.setHeader('Expires', '0');
   }
 
   private buildPayloadKeysComment(payload: Record<string, unknown>) {
