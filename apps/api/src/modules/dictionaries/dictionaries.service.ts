@@ -242,6 +242,8 @@ export class DictionariesService {
       this.configService.get<string>('BITRIX_LOCATIONS_CITY_FIELD')?.trim() || 'NAME';
     const regionField =
       this.configService.get<string>('BITRIX_LOCATIONS_REGION_FIELD')?.trim() || 'PROPERTY_REGION';
+    const countryField =
+      this.configService.get<string>('BITRIX_LOCATIONS_COUNTRY_FIELD')?.trim() || null;
 
     let response: unknown;
     try {
@@ -270,8 +272,12 @@ export class DictionariesService {
 
     for (const element of elements) {
       const bitrixElementId = this.readFirstString(element.ID);
-      const city = this.readBitrixField(element, cityField).trim();
-      const region = this.readBitrixField(element, regionField).trim();
+      const rawCityValue = this.readBitrixFieldRawValue(element, cityField);
+      const rawRegionValue = this.readBitrixFieldRawValue(element, regionField);
+      const rawCountryValue = countryField ? this.readBitrixFieldRawValue(element, countryField) : null;
+      const city = this.readBitrixField(element, cityField);
+      const region = this.readBitrixField(element, regionField);
+      const country = countryField ? this.readBitrixField(element, countryField) || 'Россия' : 'Россия';
 
       if (!bitrixElementId) {
         skipped += 1;
@@ -281,7 +287,9 @@ export class DictionariesService {
 
       if (!city || !region) {
         skipped += 1;
-        warnings.push(`Пропущен элемент ${bitrixElementId}: пустой city или region.`);
+        warnings.push(
+          `Пропущен элемент ${bitrixElementId}: пустой city или region. cityField=${cityField}, regionField=${regionField}, rawCity=${JSON.stringify(this.toSafeRawValue(rawCityValue))}, rawRegion=${JSON.stringify(this.toSafeRawValue(rawRegionValue))}`
+        );
         continue;
       }
 
@@ -311,7 +319,7 @@ export class DictionariesService {
       const data: Prisma.LocationUncheckedCreateInput = {
         city,
         region,
-        country: 'Россия',
+        country,
         code,
         isActive,
         sortOrder,
@@ -362,6 +370,8 @@ export class DictionariesService {
       this.configService.get<string>('BITRIX_LOCATIONS_CITY_FIELD')?.trim() || 'NAME';
     const regionField =
       this.configService.get<string>('BITRIX_LOCATIONS_REGION_FIELD')?.trim() || 'PROPERTY_REGION';
+    const countryField =
+      this.configService.get<string>('BITRIX_LOCATIONS_COUNTRY_FIELD')?.trim() || null;
 
     let response: unknown;
     try {
@@ -392,8 +402,9 @@ export class DictionariesService {
       iblockTypeId,
       configuredCityField: cityField,
       configuredRegionField: regionField,
+      configuredCountryField: countryField,
       totalFetched: elements.length,
-      items: elements.map((element) => this.toBitrixLocationDebugDto(element, cityField, regionField))
+      items: elements.map((element) => this.toBitrixLocationDebugDto(element, cityField, regionField, countryField))
     };
   }
 
@@ -457,22 +468,31 @@ export class DictionariesService {
   }
 
   private readBitrixField(element: BitrixListElement, fieldName: string) {
+    return this.extractBitrixValue(this.readBitrixFieldRawValue(element, fieldName))?.trim() ?? '';
+  }
+
+  private readBitrixFieldRawValue(element: BitrixListElement, fieldName: string): unknown {
     if (fieldName === 'NAME') {
-      return this.readFirstString(element.NAME);
+      return element.NAME;
     }
 
-    return this.readFirstString(element[fieldName]);
+    return element[fieldName];
   }
 
   private toBitrixLocationDebugDto(
     element: BitrixListElement,
     cityField: string,
-    regionField: string
+    regionField: string,
+    countryField: string | null
   ) {
     const fields = this.readRecord(element.fields);
     const property = this.readRecord(element.property) ?? this.readRecord(element.PROPERTY) ?? this.readRecord(element.PROPERTIES);
     const cityCandidates = this.findBitrixFieldCandidates(element, ['NAME', 'name', 'TITLE', 'Город'], ['Город']);
     const regionCandidates = this.findBitrixFieldCandidates(element, ['Субъект РФ'], ['Субъект РФ']);
+    const rawCityValue = this.readBitrixFieldRawValue(element, cityField);
+    const rawRegionValue = this.readBitrixFieldRawValue(element, regionField);
+    const rawCountryValue = countryField ? this.readBitrixFieldRawValue(element, countryField) : null;
+    const selectedCountry = countryField ? this.readBitrixField(element, countryField) || 'Россия' : 'Россия';
 
     return {
       id: this.readFirstString(element.ID),
@@ -481,8 +501,12 @@ export class DictionariesService {
       propertyKeys: property ? this.safeKeys(property) : [],
       cityCandidates,
       regionCandidates,
-      selectedCity: this.readBitrixField(element, cityField).trim(),
-      selectedRegion: this.readBitrixField(element, regionField).trim()
+      rawCityValueSafe: this.toSafeRawValue(rawCityValue),
+      rawRegionValueSafe: this.toSafeRawValue(rawRegionValue),
+      rawCountryValueSafe: this.toSafeRawValue(rawCountryValue),
+      selectedCity: this.readBitrixField(element, cityField),
+      selectedRegion: this.readBitrixField(element, regionField),
+      selectedCountry
     };
   }
 
@@ -494,7 +518,7 @@ export class DictionariesService {
     const candidates: BitrixFieldCandidate[] = [];
 
     for (const key of directKeys) {
-      const value = this.readFirstString((element as Record<string, unknown>)[key]);
+      const value = this.extractBitrixValue((element as Record<string, unknown>)[key]) ?? '';
       if (value) {
         candidates.push({ key, value });
       }
@@ -507,7 +531,7 @@ export class DictionariesService {
       }
 
       for (const key of directKeys) {
-        const value = this.readFirstString(nested[key]);
+        const value = this.extractBitrixValue(nested[key]) ?? '';
         if (value) {
           candidates.push({ key: `${nestedKey}.${key}`, value });
         }
@@ -565,33 +589,14 @@ export class DictionariesService {
   }
 
   private readBitrixPropertyName(value: unknown): string {
-    const record = this.readRecord(value);
-    if (!record) {
-      return '';
-    }
-
-    return this.readFirstString(record.NAME) || this.readFirstString(record.name) || this.readFirstString(record.TITLE);
+    return this.extractBitrixValue(this.readRecord(value)?.NAME)
+      || this.extractBitrixValue(this.readRecord(value)?.name)
+      || this.extractBitrixValue(this.readRecord(value)?.TITLE)
+      || '';
   }
 
   private readBitrixPropertyValue(value: unknown): string {
-    if (Array.isArray(value)) {
-      return this.readFirstString(value.map((item) => this.readBitrixPropertyValue(item)));
-    }
-
-    const record = this.readRecord(value);
-    if (!record) {
-      return this.readFirstString(value);
-    }
-
-    return (
-      this.readFirstString(record.VALUE) ||
-      this.readFirstString(record.value) ||
-      this.readFirstString(record.TEXT) ||
-      this.readFirstString(record.text) ||
-      this.readFirstString(record.DISPLAY_VALUE) ||
-      this.readFirstString(record.displayValue) ||
-      this.readFirstString(Object.values(record))
-    );
+    return this.extractBitrixValue(value) ?? '';
   }
 
   private readRecord(value: unknown): Record<string, unknown> | null {
@@ -620,6 +625,84 @@ export class DictionariesService {
 
   private isSensitiveKey(key: string) {
     return /access[_-]?token|refresh[_-]?token|client[_-]?secret|application[_-]?token|auth/i.test(key);
+  }
+
+  private extractBitrixValue(input: unknown): string | null {
+    if (input === undefined || input === null) {
+      return null;
+    }
+
+    if (typeof input === 'string') {
+      const value = input.trim();
+      return value || null;
+    }
+
+    if (typeof input === 'number' || typeof input === 'boolean') {
+      return String(input).trim();
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        const value = this.extractBitrixValue(item);
+        if (value) {
+          return value;
+        }
+      }
+      return null;
+    }
+
+    const record = this.readRecord(input);
+    if (!record) {
+      return null;
+    }
+
+    const directKeys = ['VALUE', 'value', 'TEXT', 'text', 'DISPLAY_VALUE', 'displayValue', 'NAME', 'name'];
+    for (const key of directKeys) {
+      if (key in record) {
+        const value = this.extractBitrixValue(record[key]);
+        if (value) {
+          return value;
+        }
+      }
+    }
+
+    for (const value of Object.values(record)) {
+      const extracted = this.extractBitrixValue(value);
+      if (extracted) {
+        return extracted;
+      }
+    }
+
+    return null;
+  }
+
+  private toSafeRawValue(input: unknown): unknown {
+    if (input === undefined || input === null) {
+      return null;
+    }
+
+    if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
+      return input;
+    }
+
+    if (Array.isArray(input)) {
+      return input.map((item) => this.toSafeRawValue(item));
+    }
+
+    const record = this.readRecord(input);
+    if (!record) {
+      return null;
+    }
+
+    const safe: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (this.isSensitiveKey(key)) {
+        continue;
+      }
+      safe[key] = this.toSafeRawValue(value);
+    }
+
+    return safe;
   }
 
   private readFirstString(value: unknown): string {
