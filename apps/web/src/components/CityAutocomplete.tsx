@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useDictionaries } from '../context/DictionariesContext';
 import type { LocationItem } from '../types/dictionaries';
+import { sendResizeToBitrix } from '../utils/bitrixResize';
 
 export type SelectedLocation = {
   city: string;
@@ -36,13 +37,6 @@ function matchesLocation(location: LocationItem, query: string) {
   return (
     location.city.toLowerCase().includes(normalized) ||
     location.region.toLowerCase().includes(normalized)
-  );
-}
-
-function sendParentResize() {
-  window.parent?.postMessage(
-    { type: 'tariffcalc:resize', height: document.documentElement.scrollHeight },
-    '*'
   );
 }
 
@@ -168,7 +162,7 @@ export function CityAutocomplete({
 
   useEffect(() => {
     if (isOpen) {
-      sendParentResize();
+      sendResizeToBitrix();
     }
   }, [isOpen]);
 
@@ -251,7 +245,7 @@ export function CityAutocomplete({
     setShowCreateForm(false);
     upsertLocation(location);
     onLocationChange?.(nextSelection, location.city);
-    sendParentResize();
+    sendResizeToBitrix();
   }
 
   function handleInputChange(nextValue: string) {
@@ -308,7 +302,7 @@ export function CityAutocomplete({
       setIsOpen(false);
       setHighlightedIndex(-1);
       setShowCreateForm(false);
-      sendParentResize();
+      sendResizeToBitrix();
     }
   }
 
@@ -398,7 +392,7 @@ export function CityAutocomplete({
                   setShowCreateForm((current) => !current);
                   setCreateRegion('');
                   setInlineError(null);
-                  sendParentResize();
+                  sendResizeToBitrix();
                 }}
               >
                 + Добавить в справочник

@@ -6,6 +6,7 @@ import {
 } from '../components/CityAutocomplete';
 import { useDictionaries } from '../context/DictionariesContext';
 import type { BitrixLocationSyncResponse } from '../types/dictionaries';
+import { sendResizeToBitrix } from '../utils/bitrixResize';
 
 type Services = {
   portHandling: boolean;
@@ -202,13 +203,6 @@ function isPrefillDirtyKey(
   key: keyof FormState
 ): key is 'cargoName' | 'vehicleType' | 'origin' | 'destination' {
   return key === 'cargoName' || key === 'vehicleType' || key === 'origin' || key === 'destination';
-}
-
-function sendParentResize() {
-  window.parent?.postMessage(
-    { type: 'tariffcalc:resize', height: document.documentElement.scrollHeight },
-    '*'
-  );
 }
 
 function normalizeStages(stages: StageItem[], resetCost = false) {
@@ -483,18 +477,7 @@ export function DealCalculatorPage() {
 
   useEffect(() => {
     function sendResize() {
-      const root = document.documentElement;
-      const body = document.body;
-      const height = Math.max(
-        root.scrollHeight,
-        root.offsetHeight,
-        body.scrollHeight,
-        body.offsetHeight,
-        pageRef.current?.scrollHeight ?? 0,
-        window.innerHeight
-      );
-
-      window.parent?.postMessage({ type: 'tariffcalc:resize', height }, '*');
+      sendResizeToBitrix();
     }
 
     const delayed = [0, 100, 300, 1000, 2000].map((delay) => window.setTimeout(sendResize, delay));
@@ -520,7 +503,7 @@ export function DealCalculatorPage() {
   }, []);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => sendParentResize(), 0);
+    const timeoutId = window.setTimeout(() => sendResizeToBitrix(), 0);
     return () => window.clearTimeout(timeoutId);
   }, [
     openSections,
@@ -657,7 +640,7 @@ export function DealCalculatorPage() {
       // ignore prefill errors, form remains editable
     } finally {
       setPrefillLoading(false);
-      sendParentResize();
+      sendResizeToBitrix();
     }
   }
 
@@ -681,7 +664,7 @@ export function DealCalculatorPage() {
 
   function toggleAccordion(section: AccordionKey) {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
-    sendParentResize();
+    sendResizeToBitrix();
   }
 
   function handleTemplateSelect(template: RouteTemplateType) {
@@ -711,7 +694,7 @@ export function DealCalculatorPage() {
       ])
     );
     setOpenSections((current) => ({ ...current, stages: true }));
-    sendParentResize();
+    sendResizeToBitrix();
   }
 
   function handleDeleteStage(stageId: string) {
@@ -720,7 +703,7 @@ export function DealCalculatorPage() {
     setServices((current) =>
       current.map((service) => (service.stageId === stageId ? { ...service, stageId: '' } : service))
     );
-    sendParentResize();
+    sendResizeToBitrix();
   }
 
   function handleMoveStage(stageId: string, direction: -1 | 1) {
@@ -1048,7 +1031,7 @@ export function DealCalculatorPage() {
       });
     }
 
-    sendParentResize();
+    sendResizeToBitrix();
   }
 
   const stageOptionsMarkup = stages.map((stage) => (
@@ -1309,7 +1292,7 @@ export function DealCalculatorPage() {
                         onTextChange={(text) => updateStage(stage.id, { fromLocation: text, fromLocationId: undefined })}
                         onLocationChange={(location, text) => {
                           updateStage(stage.id, { fromLocation: location?.city ?? text, fromLocationId: location?.id });
-                          sendParentResize();
+                          sendResizeToBitrix();
                         }}
                       />
                       <label>
@@ -1332,7 +1315,7 @@ export function DealCalculatorPage() {
                         onTextChange={(text) => updateStage(stage.id, { toLocation: text, toLocationId: undefined })}
                         onLocationChange={(location, text) => {
                           updateStage(stage.id, { toLocation: location?.city ?? text, toLocationId: location?.id });
-                          sendParentResize();
+                          sendResizeToBitrix();
                         }}
                       />
                       <label className="stage-cost-field">
