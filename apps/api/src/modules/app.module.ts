@@ -8,6 +8,7 @@ import { CalculationsModule } from './calculations/calculations.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DictionariesModule } from './dictionaries/dictionaries.module';
+import { TariffsModule } from './tariffs/tariffs.module';
 
 const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
 
@@ -18,12 +19,13 @@ const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
     }),
     ServeStaticModule.forRoot({
       rootPath: process.env.WEB_DIST_PATH || defaultWebDistPath,
-      exclude: ['/health', '/calculator*', '/calculations*', '/bitrix*']
+      exclude: ['/health', '/calculator*', '/calculations*', '/bitrix*', '/tariffs*']
     }),
     PrismaModule,
     HealthModule,
     BitrixModule,
     DictionariesModule,
+    TariffsModule,
     CalculationsModule,
     CalculatorModule
   ]

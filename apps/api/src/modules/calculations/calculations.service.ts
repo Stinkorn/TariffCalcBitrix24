@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCalculationDto } from './dto/create-calculation.dto';
 
@@ -30,6 +31,7 @@ export class CalculationsService {
         marginValue: payload.marginValue ?? null,
         services: payload.services ?? undefined,
         warnings: payload.warnings ?? undefined,
+        tariffSnapshot: payload.tariffSnapshot as Prisma.InputJsonValue | undefined,
         status: 'DRAFT',
         lines: {
           create: payload.lines.map((line, index) => ({

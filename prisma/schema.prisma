@@ -18,6 +18,28 @@ enum RouteDirection {
   KLD_IN
 }
 
+enum TariffAdditionType {
+  FIXED
+  PERCENT
+  PER_UNIT
+}
+
+enum TariffStageType {
+  AUTO
+  SEA
+  RAIL
+  TERMINAL
+  CUSTOM
+}
+
+enum TariffUnit {
+  FIXED
+  KM
+  TON
+  CONTAINER
+  DAY
+}
+
 model Role {
   id          String       @id @default(uuid())
   code        UserRoleCode @unique
@@ -74,6 +96,86 @@ model Location {
   @@index([isActive, sortOrder, city])
 }
 
+model TariffType {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tariffs   Tariff[]
+}
+
+model Tariff {
+  id          String           @id @default(cuid())
+  name        String
+  code        String           @unique
+  tariffTypeId String
+  active      Boolean          @default(true)
+  currency    String           @default("RUB")
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  tariffType  TariffType       @relation(fields: [tariffTypeId], references: [id])
+  stages      TariffStage[]
+  rows        TariffRow[]
+  additions   TariffAddition[]
+
+  @@index([tariffTypeId, active])
+}
+
+model TariffStage {
+  id        String          @id @default(cuid())
+  tariffId  String
+  stageType TariffStageType
+  createdAt DateTime        @default(now())
+  tariff    Tariff          @relation(fields: [tariffId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffId, stageType])
+  @@index([stageType])
+}
+
+model TariffRow {
+  id             String          @id @default(cuid())
+  tariffId       String
+  minDistance    Decimal?        @db.Decimal(12, 2)
+  maxDistance    Decimal?        @db.Decimal(12, 2)
+  minWeight      Decimal?        @db.Decimal(18, 3)
+  maxWeight      Decimal?        @db.Decimal(18, 3)
+  containerTypeId String?
+  fromLocationId String?
+  toLocationId   String?
+  routeDirection RouteDirection?
+  stageType      TariffStageType?
+  unit           TariffUnit      @default(FIXED)
+  price          Decimal         @db.Decimal(18, 2)
+  currency       String
+  description    String?
+  priority       Int             @default(100)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  tariff         Tariff          @relation(fields: [tariffId], references: [id], onDelete: Cascade)
+
+  @@index([tariffId, priority])
+  @@index([tariffId, fromLocationId, toLocationId])
+}
+
+model TariffAddition {
+  id        String             @id @default(cuid())
+  tariffId  String
+  name      String
+  code      String
+  type      TariffAdditionType @default(FIXED)
+  value     Decimal            @db.Decimal(18, 2)
+  unit      String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  tariff    Tariff             @relation(fields: [tariffId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffId, code])
+  @@index([tariffId])
+}
+
 model User {
   id           String       @id @default(uuid())
   bitrixUserId String?
@@ -116,6 +218,7 @@ model Calculation {
   services      Json?
   warnings      Json?
   status        String            @default("DRAFT")
+  tariffSnapshot Json?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   lines         CalculationLine[]

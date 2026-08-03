@@ -15,6 +15,28 @@ body {
   color: #0f172a;
 }
 
+.app-nav {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.app-nav a {
+  padding: 7px 10px;
+  border-radius: 7px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-nav a.active {
+  background: #0f5f63;
+  color: #fff;
+}
+
 .page {
   padding: 8px;
 }
@@ -343,6 +365,28 @@ th {
   color: #334155;
   font-size: 11px;
   font-weight: 700;
+}
+
+tbody tr.is-selected,
+tbody tr:hover {
+  background: #edf7f7;
+  cursor: pointer;
+}
+
+.tariff-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.tariff-row-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.table-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .hero-card {

@@ -825,7 +825,13 @@ export function DealCalculatorPage() {
           margin: snapshot.result.margin,
           clientPrice: snapshot.result.clientPrice,
           lines: snapshot.result.lines,
-          warnings: snapshot.result.warnings ?? []
+          warnings: snapshot.result.warnings ?? [],
+          tariffSnapshot: {
+            source: 'temporary_formula',
+            distance: null,
+            weight: formState.weightKg,
+            price: snapshot.result.totalCost
+          }
         })
       });
 

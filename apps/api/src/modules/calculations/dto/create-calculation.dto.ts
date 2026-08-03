@@ -115,4 +115,8 @@ export class CreateCalculationDto {
   @IsOptional()
   @IsArray()
   warnings?: string[];
+
+  @IsOptional()
+  @IsObject()
+  tariffSnapshot?: Record<string, unknown>;
 }
