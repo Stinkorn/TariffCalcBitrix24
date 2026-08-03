@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsDateString,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -22,6 +23,13 @@ class CreateCalculationLineDto {
 
   @IsString()
   currency!: string;
+
+  @IsOptional() @IsString() tariffId?: string;
+  @IsOptional() @IsString() tariffRowId?: string;
+  @IsOptional() @IsString() tariffName?: string;
+  @IsOptional() @IsNumber() tariffPrice?: number;
+  @IsOptional() @IsString() tariffUnit?: string;
+  @IsOptional() @IsDateString() tariffCalculatedAt?: string;
 
   @IsOptional()
   @IsNumber()

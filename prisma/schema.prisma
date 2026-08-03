@@ -234,6 +234,12 @@ model CalculationLine {
   name          String
   cost          Decimal     @db.Decimal(18, 2)
   currency      String
+  tariffId      String?
+  tariffRowId   String?
+  tariffName    String?
+  tariffPrice   Decimal?    @db.Decimal(18, 2)
+  tariffUnit    String?
+  tariffCalculatedAt DateTime?
   sortOrder     Int         @default(0)
   createdAt     DateTime    @default(now())
   calculation   Calculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)

@@ -24,8 +24,10 @@ type StageItem = {
   type: StageType;
   title: string;
   fromLocation: string;
+  fromLocationId?: string;
   fromAddress: string;
   toLocation: string;
+  toLocationId?: string;
   toAddress: string;
   vehicleType: string;
   containerType: string;
@@ -37,6 +39,9 @@ type StageItem = {
   tariffRowId?: string;
   tariffName?: string;
   tariffBasis?: string;
+  tariffPrice?: number;
+  tariffUnit?: string;
+  tariffCalculatedAt?: string;
 };
 
 type AdditionalService = {
@@ -54,6 +59,12 @@ type CalculationLine = {
   cost: number;
   currency: string;
   sortOrder?: number;
+  tariffId?: string;
+  tariffRowId?: string;
+  tariffName?: string;
+  tariffPrice?: number;
+  tariffUnit?: string;
+  tariffCalculatedAt?: string;
 };
 
 type CalculateResponse = {
@@ -211,7 +222,10 @@ function normalizeStages(stages: StageItem[], resetCost = false) {
           tariffId: undefined,
           tariffRowId: undefined,
           tariffName: undefined,
-          tariffBasis: undefined
+          tariffBasis: undefined,
+          tariffPrice: undefined,
+          tariffUnit: undefined,
+          tariffCalculatedAt: undefined
         }
       : {})
   }));
@@ -315,7 +329,13 @@ function buildCalculationSnapshot(
       name: `${STAGE_TYPE_LABELS[stage.type]}: ${stage.fromLocation || '—'} -> ${stage.toLocation || '—'}`,
       cost: stage.costAmount,
       currency: stage.costCurrency,
-      sortOrder: stage.sortOrder
+      sortOrder: stage.sortOrder,
+      tariffId: stage.tariffId,
+      tariffRowId: stage.tariffRowId,
+      tariffName: stage.tariffName,
+      tariffPrice: stage.tariffPrice,
+      tariffUnit: stage.tariffUnit,
+      tariffCalculatedAt: stage.tariffCalculatedAt
     })),
     ...normalizedServices
       .filter((service) => service.enabled)
@@ -814,7 +834,11 @@ export function DealCalculatorPage() {
               distance: stage.distanceKm,
               weight: formState.weightKg,
               containerType: stage.containerType,
+              containerStatus: formState.containerStatus,
+              currency: formState.currency,
               routeDirection: formState.routeType,
+              fromLocationId: stage.fromLocationId,
+              toLocationId: stage.toLocationId,
               fromLocation: stage.fromLocation,
               toLocation: stage.toLocation
             })
@@ -829,7 +853,10 @@ export function DealCalculatorPage() {
             tariffId: match.tariffId ?? undefined,
             tariffRowId: match.tariffRowId ?? undefined,
             tariffName: match.tariffName ?? undefined,
-            tariffBasis: match.basis ?? undefined
+            tariffBasis: match.basis ?? undefined,
+            tariffPrice: Number(match.price),
+            tariffUnit: match.unit ?? undefined,
+            tariffCalculatedAt: new Date().toISOString()
           };
         } catch {
           return stage;
@@ -870,7 +897,7 @@ export function DealCalculatorPage() {
         weight: formState.weightKg,
         price: stage.costAmount,
         currency: stage.costCurrency,
-        basis: stage.tariffBasis
+        tariffRow: { basis: stage.tariffBasis },
       }));
 
     try {
@@ -1279,9 +1306,9 @@ export function DealCalculatorPage() {
                         name={`${stage.id}-from`}
                         metadataPrefix={`${stage.id}-from`}
                         value={stage.fromLocation}
-                        onTextChange={(text) => updateStage(stage.id, { fromLocation: text })}
+                        onTextChange={(text) => updateStage(stage.id, { fromLocation: text, fromLocationId: undefined })}
                         onLocationChange={(location, text) => {
-                          updateStage(stage.id, { fromLocation: location?.city ?? text });
+                          updateStage(stage.id, { fromLocation: location?.city ?? text, fromLocationId: location?.id });
                           sendParentResize();
                         }}
                       />
@@ -1302,9 +1329,9 @@ export function DealCalculatorPage() {
                         name={`${stage.id}-to`}
                         metadataPrefix={`${stage.id}-to`}
                         value={stage.toLocation}
-                        onTextChange={(text) => updateStage(stage.id, { toLocation: text })}
+                        onTextChange={(text) => updateStage(stage.id, { toLocation: text, toLocationId: undefined })}
                         onLocationChange={(location, text) => {
-                          updateStage(stage.id, { toLocation: location?.city ?? text });
+                          updateStage(stage.id, { toLocation: location?.city ?? text, toLocationId: location?.id });
                           sendParentResize();
                         }}
                       />

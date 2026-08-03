@@ -39,6 +39,12 @@ export class CalculationsService {
             name: line.name,
             cost: line.cost,
             currency: line.currency,
+            tariffId: line.tariffId ?? null,
+            tariffRowId: line.tariffRowId ?? null,
+            tariffName: line.tariffName ?? null,
+            tariffPrice: line.tariffPrice ?? null,
+            tariffUnit: line.tariffUnit ?? null,
+            tariffCalculatedAt: line.tariffCalculatedAt ? new Date(line.tariffCalculatedAt) : null,
             sortOrder: line.sortOrder ?? index
           }))
         }

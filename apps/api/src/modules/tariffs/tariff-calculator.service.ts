@@ -26,8 +26,8 @@ export class TariffCalculatorService {
               { OR: [{ maxDistance: null }, { maxDistance: { gte: input.distance } }] },
               { OR: [{ minWeight: null }, { minWeight: { lte: input.weight } }] },
               { OR: [{ maxWeight: null }, { maxWeight: { gte: input.weight } }] },
-              { OR: [{ fromLocationId: null }, { fromLocationId: input.fromLocation }] },
-              { OR: [{ toLocationId: null }, { toLocationId: input.toLocation }] },
+              { OR: [{ fromLocationId: null }, { fromLocationId: input.fromLocationId ?? input.fromLocation }] },
+              { OR: [{ toLocationId: null }, { toLocationId: input.toLocationId ?? input.toLocation }] },
               { OR: [{ containerTypeId: null }, { containerTypeId: input.containerType }] },
               { OR: [{ routeDirection: null }, { routeDirection: input.routeDirection }] },
               { OR: [{ stageType: null }, { stageType: input.stageType }] }
@@ -49,14 +49,14 @@ export class TariffCalculatorService {
       unit: row.unit,
       currency: row.currency,
       tariffName: tariff.name,
-      basis: row.description ?? this.buildBasis(row)
+      basis: this.buildBasis(row)
     };
   }
 
   private notFound() { return { tariffFound: false, tariffId: null, tariffRowId: null, price: null, unit: null, currency: null, tariffName: null }; }
-  private buildBasis(row: { minDistance: unknown; maxDistance: unknown; minWeight: unknown; maxWeight: unknown }) {
+  private buildBasis(row: { minDistance: unknown; maxDistance: unknown; minWeight: unknown; maxWeight: unknown; description: string | null }) {
     const distance = `${row.minDistance ?? '0'}–${row.maxDistance ?? '∞'} км`;
-    const weight = row.maxWeight ? `до ${row.maxWeight} кг` : row.minWeight ? `от ${row.minWeight} кг` : '';
+    const weight = row.description ?? (row.maxWeight ? `до ${row.maxWeight} кг` : row.minWeight ? `от ${row.minWeight} кг` : '');
     return [distance, weight].filter(Boolean).join(' / ');
   }
   private getDefaultType(stageType: string) {
