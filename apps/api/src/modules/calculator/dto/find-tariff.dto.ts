@@ -9,9 +9,9 @@ export class FindTariffDto {
   @IsOptional()
   tariffTypeCode?: string;
 
-  @IsOptional() @IsString() fromLocationId?: string;
-  @IsOptional() @IsString() toLocationId?: string;
-  @IsOptional() @IsString() containerTypeId?: string;
+  @IsOptional() @IsString() fromLocation?: string;
+  @IsOptional() @IsString() toLocation?: string;
+  @IsOptional() @IsString() containerType?: string;
   @IsOptional() @IsString() routeDirection?: 'KLD_OUT' | 'KLD_IN';
   @Type(() => Number) @IsNumber() @Min(0) distance!: number;
   @Type(() => Number) @IsNumber() @Min(0) weight!: number;

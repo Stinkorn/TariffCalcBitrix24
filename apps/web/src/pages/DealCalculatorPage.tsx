@@ -30,8 +30,13 @@ type StageItem = {
   vehicleType: string;
   containerType: string;
   comment: string;
+  distanceKm: number;
   costAmount: number;
   costCurrency: string;
+  tariffId?: string;
+  tariffRowId?: string;
+  tariffName?: string;
+  tariffBasis?: string;
 };
 
 type AdditionalService = {
@@ -58,6 +63,17 @@ type CalculateResponse = {
   currency: string;
   lines: CalculationLine[];
   warnings?: string[];
+};
+
+type TariffMatchResponse = {
+  tariffFound: boolean;
+  tariffId: string | null;
+  tariffRowId: string | null;
+  price: number | string | null;
+  unit: string | null;
+  currency: string | null;
+  tariffName: string | null;
+  basis?: string | null;
 };
 
 type SavedCalculation = {
@@ -184,12 +200,20 @@ function sendParentResize() {
   );
 }
 
-function normalizeStages(stages: StageItem[]) {
+function normalizeStages(stages: StageItem[], resetCost = false) {
   return stages.map((stage, index) => ({
     ...stage,
     sortOrder: index + 1,
     title: buildStageTitle(stage.type, index),
-    costAmount: STAGE_BASE_COSTS[stage.type] ?? STAGE_BASE_COSTS.CUSTOM
+    ...(resetCost
+      ? {
+          costAmount: STAGE_BASE_COSTS[stage.type] ?? STAGE_BASE_COSTS.CUSTOM,
+          tariffId: undefined,
+          tariffRowId: undefined,
+          tariffName: undefined,
+          tariffBasis: undefined
+        }
+      : {})
   }));
 }
 
@@ -211,6 +235,7 @@ function createStage(
     vehicleType: defaults?.vehicleType ?? '',
     containerType: defaults?.containerType ?? '',
     comment: '',
+    distanceKm: 0,
     costAmount: STAGE_BASE_COSTS[type],
     costCurrency: currency
   };
@@ -262,7 +287,7 @@ function buildCalculationSnapshot(
     ...stage,
     vehicleType: stage.vehicleType || formState.vehicleType,
     containerType: stage.containerType || formState.containerType,
-    costCurrency: formState.currency
+    costCurrency: stage.tariffId ? stage.costCurrency : formState.currency
   }));
   const normalizedServices = services.map((service) => ({
     ...service,
@@ -429,7 +454,7 @@ export function DealCalculatorPage() {
     setStages((current) =>
       current.map((stage) => ({
         ...stage,
-        costCurrency: formState.currency,
+        costCurrency: stage.tariffId ? stage.costCurrency : formState.currency,
         vehicleType: stage.vehicleType || formState.vehicleType,
         containerType: stage.containerType || formState.containerType
       }))
@@ -759,7 +784,7 @@ export function DealCalculatorPage() {
     return null;
   }
 
-  function handleCalculate() {
+  async function handleCalculate() {
     setLoading(true);
     setError(null);
     setSavedId(null);
@@ -772,7 +797,46 @@ export function DealCalculatorPage() {
       return;
     }
 
-    const snapshot = buildCalculationSnapshot(formState, stages, services);
+    const fallbackStages = normalizeStages(stages, true).map((stage) => ({
+      ...stage,
+      vehicleType: stage.vehicleType || formState.vehicleType,
+      containerType: stage.containerType || formState.containerType,
+      costCurrency: formState.currency
+    }));
+    const tariffStages = await Promise.all(
+      fallbackStages.map(async (stage) => {
+        try {
+          const response = await fetch(`${apiBaseUrl}/calculator/find-tariff`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              stageType: stage.type,
+              distance: stage.distanceKm,
+              weight: formState.weightKg,
+              containerType: stage.containerType,
+              routeDirection: formState.routeType,
+              fromLocation: stage.fromLocation,
+              toLocation: stage.toLocation
+            })
+          });
+          if (!response.ok) return stage;
+          const match = (await response.json()) as TariffMatchResponse;
+          if (!match.tariffFound || match.price === null) return stage;
+          return {
+            ...stage,
+            costAmount: Number(match.price),
+            costCurrency: match.currency ?? stage.costCurrency,
+            tariffId: match.tariffId ?? undefined,
+            tariffRowId: match.tariffRowId ?? undefined,
+            tariffName: match.tariffName ?? undefined,
+            tariffBasis: match.basis ?? undefined
+          };
+        } catch {
+          return stage;
+        }
+      })
+    );
+    const snapshot = buildCalculationSnapshot(formState, tariffStages, services);
     setStages(snapshot.normalizedStages);
     setServices(snapshot.normalizedServices);
     setResult(snapshot.result);
@@ -795,6 +859,19 @@ export function DealCalculatorPage() {
     }
 
     const snapshot = buildCalculationSnapshot(formState, stages, services);
+    const tariffStages = snapshot.normalizedStages
+      .filter((stage) => stage.tariffId)
+      .map((stage) => ({
+        tariff: stage.tariffName,
+        tariffId: stage.tariffId,
+        tariffRowId: stage.tariffRowId,
+        stage: stage.type,
+        distance: stage.distanceKm,
+        weight: formState.weightKg,
+        price: stage.costAmount,
+        currency: stage.costCurrency,
+        basis: stage.tariffBasis
+      }));
 
     try {
       const response = await fetch(`${apiBaseUrl}/calculations`, {
@@ -826,12 +903,9 @@ export function DealCalculatorPage() {
           clientPrice: snapshot.result.clientPrice,
           lines: snapshot.result.lines,
           warnings: snapshot.result.warnings ?? [],
-          tariffSnapshot: {
-            source: 'temporary_formula',
-            distance: null,
-            weight: formState.weightKg,
-            price: snapshot.result.totalCost
-          }
+          tariffSnapshot: tariffStages.length > 0
+            ? { source: 'tariff', stages: tariffStages }
+            : { source: 'temporary_formula', weight: formState.weightKg, price: snapshot.result.totalCost }
         })
       });
 
@@ -1150,7 +1224,15 @@ export function DealCalculatorPage() {
                     <div className="stage-card-head">
                       <div>
                         <h3>{stage.title}</h3>
-                        <p className="muted">Mock стоимость: {formatMoney(stage.costAmount, stage.costCurrency)}</p>
+                        <p className="muted">Стоимость: {formatMoney(stage.costAmount, stage.costCurrency)}</p>
+                        {stage.tariffName ? (
+                          <div className="tariff-match-info">
+                            <span>Тариф: <b>{stage.tariffName}</b></span>
+                            {stage.tariffBasis && <span>Основание: {stage.tariffBasis}</span>}
+                          </div>
+                        ) : (
+                          <p className="muted">Тариф не найден — использована fallback-формула.</p>
+                        )}
                       </div>
                       <div className="stage-actions">
                         <button
@@ -1203,6 +1285,18 @@ export function DealCalculatorPage() {
                           sendParentResize();
                         }}
                       />
+                      <label>
+                        Расстояние, км
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={stage.distanceKm}
+                          onChange={(event) =>
+                            updateStage(stage.id, { distanceKm: clampNumber(Number(event.target.value), 0) })
+                          }
+                        />
+                      </label>
                       <CityAutocomplete
                         label="Пункт выгрузки"
                         name={`${stage.id}-to`}
@@ -1361,7 +1455,7 @@ export function DealCalculatorPage() {
 
         <div className="actions sticky-actions">
           <button type="button" onClick={handleCalculate} disabled={loading}>
-            {loading ? 'Расчет...' : 'Рассчитать'}
+            {loading ? 'Подбор тарифа...' : 'Рассчитать'}
           </button>
           <button type="button" onClick={handleSaveCalculation} disabled={saving}>
             {saving ? 'Сохранение...' : 'Сохранить расчет'}
