@@ -14,8 +14,9 @@ import {
   Res
 } from '@nestjs/common';
 import { readFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
+import { DEFAULT_WEB_DIST_PATH } from '../../web-dist-path';
 import {
   detectDomain,
   parsePlacementOptions,
@@ -201,7 +202,7 @@ export class BitrixController {
 
   private async readWebApplicationDocument() {
     const webDistPath = this.configService.get<string>('WEB_DIST_PATH')
-      || resolve(__dirname, '..', '..', '..', '..', '..', 'web', 'dist');
+      || DEFAULT_WEB_DIST_PATH;
 
     try {
       return await readFile(join(webDistPath, 'index.html'), 'utf8');

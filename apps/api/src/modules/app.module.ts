@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { resolve } from 'path';
 import { BitrixModule } from './bitrix/bitrix.module';
 import { CalculatorModule } from './calculator/calculator.module';
 import { CalculationsModule } from './calculations/calculations.module';
@@ -10,8 +9,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { DictionariesModule } from './dictionaries/dictionaries.module';
 import { TariffsModule } from './tariffs/tariffs.module';
 import { AuthModule } from './auth/auth.module';
-
-const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
+import { DEFAULT_WEB_DIST_PATH } from '../web-dist-path';
 
 @Module({
   imports: [
@@ -19,7 +17,7 @@ const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
       isGlobal: true
     }),
     ServeStaticModule.forRoot({
-      rootPath: process.env.WEB_DIST_PATH || defaultWebDistPath,
+      rootPath: process.env.WEB_DIST_PATH || DEFAULT_WEB_DIST_PATH,
       exclude: ['/health', '/calculator*', '/calculations*', '/bitrix*', '/tariffs*']
     }),
     PrismaModule,
