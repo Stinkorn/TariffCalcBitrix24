@@ -7,6 +7,7 @@ import {
 import { UserRoleCode } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixRestClient } from '../bitrix/bitrix-rest.client';
+import { AppTokenService } from './app-token.service';
 import { BitrixBootstrapDto } from './dto/bitrix-bootstrap.dto';
 
 type BitrixUserCurrentResponse = {
@@ -26,7 +27,8 @@ const ALLOWED_ROLE_CODES = new Set<UserRoleCode>([
 export class BitrixAuthService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bitrixRestClient: BitrixRestClient
+    private readonly bitrixRestClient: BitrixRestClient,
+    private readonly appTokenService: AppTokenService
   ) {}
 
   async bootstrap(dto: BitrixBootstrapDto) {
@@ -86,8 +88,16 @@ export class BitrixAuthService {
       throw new ForbiddenException('Bitrix user is not allowed');
     }
 
+    const applicationToken = await this.appTokenService.issue({
+      sub: user.id,
+      portalId: portal.id,
+      bitrixUserId,
+      role: user.role.code
+    });
+
     return {
       authenticated: true,
+      ...applicationToken,
       user: {
         id: user.id,
         bitrixUserId,
