@@ -7,6 +7,7 @@ type BitrixAuthContext = {
 type BitrixSdk = {
   init: (callback: () => void) => void;
   getAuth: () => BitrixAuthContext;
+  resizeWindow?: (width: number, height: number) => void;
 };
 
 declare global {

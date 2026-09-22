@@ -3,13 +3,13 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Headers,
   HttpCode,
   HttpException,
   Param,
   Post,
   Query,
+  Redirect,
   Res
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -194,37 +194,32 @@ export class BitrixController {
 
   @Get('deal-tab')
   @Public()
-  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Redirect()
   dealTab(
-    @Query() query: Record<string, unknown>,
-    @Res({ passthrough: true }) response: any
+    @Query() query: Record<string, unknown>
   ) {
-    this.applyNoCacheHeaders(response);
-    return this.renderDealTabResponse(query, {});
+    return this.buildDealTabRedirect(query, {}, 302);
   }
 
   @Post('deal-tab')
   @Public()
-  @HttpCode(200)
-  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Redirect()
   dealTabPost(
     @Query() query: Record<string, unknown>,
-    @Body() body: DealTabPayload,
-    @Res({ passthrough: true }) response: any
+    @Body() body: DealTabPayload
   ) {
-    this.applyNoCacheHeaders(response);
-    return this.renderDealTabResponse(query, body);
+    return this.buildDealTabRedirect(query, body, 303);
   }
 
-  private renderDealTabResponse(
+  private buildDealTabRedirect(
     query: Record<string, unknown>,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    statusCode: 302 | 303
   ) {
     const mergedContext = {
       ...(body ?? {}),
       ...(query ?? {})
     };
-    const safeContext = sanitizeContext(mergedContext);
     const { dealId } = parsePlacementOptions(mergedContext);
     const detectedDealId =
       dealId ??
@@ -235,102 +230,7 @@ export class BitrixController {
           : null);
     const domain = detectDomain(mergedContext);
     const frontendUrl = this.buildDealCalculatorUrl(detectedDealId, domain);
-    const payloadKeysComment = this.buildPayloadKeysComment(safeContext);
-
-    return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Калькулятор перевозки</title>
-    <script src="//api.bitrix24.com/api/v1/"></script>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        min-height: 100%;
-        overflow: hidden;
-        background: #fff;
-      }
-
-      iframe {
-        display: block;
-        width: 100%;
-        border: 0;
-        min-height: 1200px;
-      }
-    </style>
-  </head>
-  <body>
-    ${payloadKeysComment}
-    <iframe id="deal-calculator-frame" src="${frontendUrl}" title="Калькулятор перевозки"></iframe>
-    <script>
-      (function () {
-        var iframe = document.getElementById('deal-calculator-frame');
-        var minHeight = 700;
-        var maxHeight = 3000;
-
-        function clampHeight(value) {
-          var numeric = Number(value);
-          if (!Number.isFinite(numeric)) {
-            return minHeight;
-          }
-
-          return Math.max(minHeight, Math.min(maxHeight, Math.round(numeric)));
-        }
-
-        function measureHeight() {
-          var candidates = [
-            window.innerHeight,
-            document.documentElement ? document.documentElement.clientHeight : 0,
-            document.body ? document.body.scrollHeight : 0
-          ];
-          var maxValue = 0;
-          for (var i = 0; i < candidates.length; i += 1) {
-            var candidate = Number(candidates[i]) || 0;
-            if (candidate > maxValue) {
-              maxValue = candidate;
-            }
-          }
-          return clampHeight(maxValue);
-        }
-
-        function applyHeight(height) {
-          var nextHeight = clampHeight(height);
-          iframe.style.height = nextHeight + 'px';
-
-          if (window.BX24 && typeof window.BX24.resizeWindow === 'function') {
-            var width = document.body && document.body.scrollWidth ? document.body.scrollWidth : 1200;
-            window.BX24.resizeWindow(width, nextHeight);
-          }
-        }
-
-        function scheduleResize() {
-          var delays = [0, 300, 1000, 2000];
-          for (var i = 0; i < delays.length; i += 1) {
-            window.setTimeout(function () {
-              applyHeight(measureHeight());
-            }, delays[i]);
-          }
-        }
-
-        iframe.addEventListener('load', scheduleResize);
-        window.addEventListener('resize', scheduleResize);
-        window.addEventListener('message', function (event) {
-          var data = event.data;
-          if (!data || typeof data !== 'object' || data.type !== 'tariffcalc:resize') {
-            return;
-          }
-
-          applyHeight(data.height);
-        });
-
-        scheduleResize();
-      })();
-    </script>
-  </body>
-</html>`;
+    return { url: frontendUrl.toString(), statusCode };
   }
   @Post('placement/bind')
   @Roles(UserRoleCode.ADMIN)
@@ -451,22 +351,6 @@ export class BitrixController {
     frontendUrl.searchParams.set('build', this.dealTabBuildVersion);
 
     return frontendUrl.toString();
-  }
-
-  private applyNoCacheHeaders(response: any) {
-    response.setHeader(
-      'Cache-Control',
-      'no-store, no-cache, must-revalidate, proxy-revalidate'
-    );
-    response.setHeader('Pragma', 'no-cache');
-    response.setHeader('Expires', '0');
-  }
-
-  private buildPayloadKeysComment(payload: Record<string, unknown>) {
-    const keys = Object.keys(payload)
-      .filter((key) => !this.isSensitivePayloadKey(key))
-      .sort();
-    return `<!-- bitrix-deal-tab payload keys: ${this.escapeHtml(keys.join(', '))} -->`;
   }
 
   private renderInstallPage(view: InstallViewModel) {
@@ -613,14 +497,4 @@ export class BitrixController {
       .replace(/'/g, '&#39;');
   }
 
-  private isSensitivePayloadKey(key: string) {
-    const normalizedKey = key.toLowerCase();
-    return (
-      normalizedKey === 'app_sid' ||
-      normalizedKey === 'application_token' ||
-      normalizedKey === 'auth_id' ||
-      normalizedKey.includes('token') ||
-      normalizedKey.includes('password')
-    );
-  }
 }

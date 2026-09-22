@@ -61,7 +61,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       } catch (error) {
         accessTokenRef.current = null;
         setUser(null);
-        updateStatus('outside-bitrix');
+        updateStatus(thisIsAnEmbeddedFrame() ? 'error' : 'outside-bitrix');
         throw error;
       }
 
@@ -162,6 +162,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+function thisIsAnEmbeddedFrame() {
+  try {
+    return window.top !== window.self;
+  } catch {
+    return true;
+  }
 }
 
 export function useAuth() {
