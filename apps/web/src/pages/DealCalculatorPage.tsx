@@ -7,6 +7,7 @@ import {
 import { useDictionaries } from '../context/DictionariesContext';
 import { useAuth } from '../context/AuthContext';
 import type { BitrixLocationSyncResponse } from '../types/dictionaries';
+import { getBitrixPlacementDealId } from '../utils/bitrixAuth';
 import { sendResizeToBitrix } from '../utils/bitrixResize';
 
 type Services = {
@@ -377,7 +378,7 @@ export function DealCalculatorPage() {
   const { apiFetch, user } = useAuth();
   const canManageDictionaries = user?.role === 'ADMIN';
   const pageRef = useRef<HTMLElement | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
   const initialDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? '';
 
@@ -446,6 +447,30 @@ export function DealCalculatorPage() {
   const [counterparty, setCounterparty] = useState<CounterpartyResponse | null>(null);
   const [counterpartyError, setCounterpartyError] = useState<string | null>(null);
   const [counterpartyLoading, setCounterpartyLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialDealId.trim()) {
+      return;
+    }
+
+    void getBitrixPlacementDealId().then((placementDealId) => {
+      if (!placementDealId) {
+        return;
+      }
+
+      setSearchParams((current) => {
+        if (current.get('dealId')) {
+          return current;
+        }
+
+        const next = new URLSearchParams(current);
+        next.set('dealId', placementDealId);
+        return next;
+      }, { replace: true });
+    }).catch(() => {
+      // The query-string dealId remains the safe development fallback.
+    });
+  }, [initialDealId, setSearchParams]);
 
   const summary = useMemo(
     () => buildCalculationSnapshot(formState, stages, services),

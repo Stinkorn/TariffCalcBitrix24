@@ -8,6 +8,9 @@ type BitrixSdk = {
   init: (callback: () => void) => void;
   getAuth: () => BitrixAuthContext;
   resizeWindow?: (width: number, height: number) => void;
+  placement?: {
+    info?: (callback: (info: unknown) => void) => void;
+  };
 };
 
 declare global {
@@ -17,6 +20,7 @@ declare global {
 }
 
 let sdkLoadPromise: Promise<BitrixSdk> | null = null;
+let sdkInitPromise: Promise<BitrixSdk> | null = null;
 
 function readRequiredString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -56,31 +60,89 @@ async function loadBitrixSdk(): Promise<BitrixSdk> {
 }
 
 export async function getBitrixBootstrapContext() {
-  const sdk = await loadBitrixSdk();
+  const sdk = await initializeBitrixSdk();
 
-  return new Promise<{ access_token: string; domain: string; member_id?: string }>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => reject(new Error('Bitrix SDK init timeout')), 10000);
-    sdk.init(() => {
-      window.clearTimeout(timeoutId);
-      try {
-        const auth = sdk.getAuth();
-        const accessToken = readRequiredString(auth?.access_token);
-        const domain = readRequiredString(auth?.domain);
-        const memberId = readRequiredString(auth?.member_id);
+  try {
+    const auth = sdk.getAuth();
+    const accessToken = readRequiredString(auth?.access_token);
+    const domain = readRequiredString(auth?.domain);
+    const memberId = readRequiredString(auth?.member_id);
 
-        if (!accessToken || !domain) {
-          reject(new Error('Bitrix auth context is unavailable'));
-          return;
-        }
+    if (!accessToken || !domain) {
+      throw new Error('Bitrix auth context is unavailable');
+    }
 
-        resolve({
-          access_token: accessToken,
-          domain,
-          ...(memberId ? { member_id: memberId } : {})
-        });
-      } catch {
-        reject(new Error('Bitrix auth context is unavailable'));
-      }
-    });
+    return {
+      access_token: accessToken,
+      domain,
+      ...(memberId ? { member_id: memberId } : {})
+    };
+  } catch {
+    throw new Error('Bitrix auth context is unavailable');
+  }
+}
+
+export async function getBitrixPlacementDealId() {
+  const sdk = await initializeBitrixSdk();
+  if (!sdk.placement?.info) {
+    return null;
+  }
+
+  return new Promise<string | null>((resolve) => {
+    try {
+      sdk.placement?.info?.((info) => {
+        resolve(readPlacementDealId(info));
+      });
+    } catch {
+      resolve(null);
+    }
   });
+}
+
+async function initializeBitrixSdk() {
+  if (!sdkInitPromise) {
+    sdkInitPromise = loadBitrixSdk().then(
+      (sdk) => new Promise<BitrixSdk>((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => reject(new Error('Bitrix SDK init timeout')), 10000);
+        sdk.init(() => {
+          window.clearTimeout(timeoutId);
+          resolve(sdk);
+        });
+      })
+    ).catch((error) => {
+      sdkInitPromise = null;
+      throw error;
+    });
+  }
+
+  return sdkInitPromise;
+}
+
+function readPlacementDealId(info: unknown) {
+  if (!info || typeof info !== 'object') {
+    return null;
+  }
+
+  const placementInfo = info as { options?: unknown };
+  let options = placementInfo.options;
+  if (typeof options === 'string') {
+    try {
+      options = JSON.parse(options);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!options || typeof options !== 'object') {
+    return null;
+  }
+
+  const raw = options as Record<string, unknown>;
+  const value = raw.ID ?? raw.ENTITY_ID ?? raw.entityId ?? raw.dealId;
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized || null;
 }

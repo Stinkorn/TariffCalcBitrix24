@@ -3,15 +3,18 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   HttpCode,
   HttpException,
+  InternalServerErrorException,
   Param,
   Post,
   Query,
-  Redirect,
   Res
 } from '@nestjs/common';
+import { readFile } from 'fs/promises';
+import { join, resolve } from 'path';
 import { ConfigService } from '@nestjs/config';
 import {
   detectDomain,
@@ -55,17 +58,6 @@ type InstallViewModel = {
   shouldCallInstallFinish: boolean;
   isSuccess: boolean;
   diagnostics?: string[];
-};
-
-type DealTabPayload = {
-  DOMAIN?: string;
-  domain?: string;
-  PLACEMENT?: string;
-  PLACEMENT_OPTIONS?: string | Record<string, unknown>;
-  APP_SID?: string;
-  member_id?: string;
-  AUTH_ID?: string;
-  [key: string]: unknown;
 };
 
 type TimelineCommentBody = {
@@ -194,43 +186,28 @@ export class BitrixController {
 
   @Get('deal-tab')
   @Public()
-  @Redirect()
-  dealTab(
-    @Query() query: Record<string, unknown>
-  ) {
-    return this.buildDealTabRedirect(query, {}, 302);
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async dealTab() {
+    return this.readWebApplicationDocument();
   }
 
   @Post('deal-tab')
   @Public()
-  @Redirect()
-  dealTabPost(
-    @Query() query: Record<string, unknown>,
-    @Body() body: DealTabPayload
-  ) {
-    return this.buildDealTabRedirect(query, body, 303);
+  @HttpCode(200)
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async dealTabPost() {
+    return this.readWebApplicationDocument();
   }
 
-  private buildDealTabRedirect(
-    query: Record<string, unknown>,
-    body: Record<string, unknown>,
-    statusCode: 302 | 303
-  ) {
-    const mergedContext = {
-      ...(body ?? {}),
-      ...(query ?? {})
-    };
-    const { dealId } = parsePlacementOptions(mergedContext);
-    const detectedDealId =
-      dealId ??
-      (mergedContext.dealId
-        ? String(mergedContext.dealId)
-        : mergedContext.ID
-          ? String(mergedContext.ID)
-          : null);
-    const domain = detectDomain(mergedContext);
-    const frontendUrl = this.buildDealCalculatorUrl(detectedDealId, domain);
-    return { url: frontendUrl.toString(), statusCode };
+  private async readWebApplicationDocument() {
+    const webDistPath = this.configService.get<string>('WEB_DIST_PATH')
+      || resolve(__dirname, '..', '..', '..', '..', '..', 'web', 'dist');
+
+    try {
+      return await readFile(join(webDistPath, 'index.html'), 'utf8');
+    } catch {
+      throw new InternalServerErrorException('Web application document is unavailable');
+    }
   }
   @Post('placement/bind')
   @Roles(UserRoleCode.ADMIN)
@@ -333,24 +310,6 @@ export class BitrixController {
 
   private resolveInstallResponseFormat(format?: string): InstallResponseFormat {
     return String(format).toLowerCase() === 'json' ? 'json' : 'html';
-  }
-
-  private buildDealCalculatorUrl(dealId: string | null, portalDomain: string | null) {
-    const publicUrl = this.configService.get<string>(
-      'WEB_PUBLIC_URL',
-      'http://localhost:5173'
-    );
-
-    const frontendUrl = new URL('/deal-calculator', publicUrl);
-    if (dealId) {
-      frontendUrl.searchParams.set('dealId', dealId);
-    }
-    if (portalDomain) {
-      frontendUrl.searchParams.set('portal', portalDomain);
-    }
-    frontendUrl.searchParams.set('build', this.dealTabBuildVersion);
-
-    return frontendUrl.toString();
   }
 
   private renderInstallPage(view: InstallViewModel) {

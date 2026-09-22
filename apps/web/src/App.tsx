@@ -35,6 +35,7 @@ export function App() {
       <Routes>
         <Route path="/calculator" element={<DealCalculatorPage />} />
         <Route path="/deal-calculator" element={<DealCalculatorPage />} />
+        <Route path="/bitrix/deal-tab" element={<DealCalculatorPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/tariffs" element={<TariffsPage />} />
         <Route path="*" element={<Navigate to="/calculator" replace />} />
