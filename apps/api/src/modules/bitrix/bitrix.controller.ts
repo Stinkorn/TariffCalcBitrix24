@@ -19,6 +19,7 @@ import {
   sanitizeContext
 } from './bitrix-placement.util';
 import { BitrixPlacementService } from './bitrix-placement.service';
+import { Public } from '../auth/public.decorator';
 
 type BitrixInstallPayload = {
   AUTH_ID?: string;
@@ -95,6 +96,7 @@ export class BitrixController {
   ) {}
 
   @Get('install')
+  @Public()
   async installInfo(
     @Query('format') format: string | undefined,
     @Res({ passthrough: true }) response: any
@@ -137,6 +139,7 @@ export class BitrixController {
   }
 
   @Post('install')
+  @Public()
   async install(
     @Body() body: BitrixInstallPayload,
     @Query('format') format: string | undefined,
@@ -188,6 +191,7 @@ export class BitrixController {
   }
 
   @Get('deal-tab')
+  @Public()
   @Header('Content-Type', 'text/html; charset=utf-8')
   dealTab(
     @Query() query: Record<string, unknown>,
@@ -198,6 +202,7 @@ export class BitrixController {
   }
 
   @Post('deal-tab')
+  @Public()
   @HttpCode(200)
   @Header('Content-Type', 'text/html; charset=utf-8')
   dealTabPost(

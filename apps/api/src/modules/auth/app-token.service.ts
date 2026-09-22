@@ -26,7 +26,8 @@ export class AppTokenService {
     try {
       const accessToken = await this.jwtService.signAsync(payload, {
         secret,
-        expiresIn: lifetime.value
+        expiresIn: lifetime.value,
+        algorithm: 'HS256'
       });
 
       return {
@@ -42,7 +43,10 @@ export class AppTokenService {
     const secret = this.getSecret();
 
     try {
-      return await this.jwtService.verifyAsync<AppJwtPayload>(token, { secret });
+      return await this.jwtService.verifyAsync<AppJwtPayload>(token, {
+        secret,
+        algorithms: ['HS256']
+      });
     } catch {
       throw new UnauthorizedException('Invalid application token');
     }
