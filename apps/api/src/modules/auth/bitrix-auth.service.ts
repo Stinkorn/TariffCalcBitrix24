@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixRestClient } from '../bitrix/bitrix-rest.client';
 import { AppTokenService } from './app-token.service';
 import { BitrixBootstrapDto } from './dto/bitrix-bootstrap.dto';
+import { isInstalledBitrixPortal } from '../bitrix/bitrix-portal-status';
 
 type BitrixUserCurrentResponse = {
   result?: {
@@ -37,15 +38,13 @@ export class BitrixAuthService {
       throw new BadRequestException('Invalid Bitrix auth context');
     }
 
-    const portal = await this.prisma.bitrixPortal.findFirst({
-      where: {
-        domain,
-        appStatus: 'INSTALLED',
-        uninstalledAt: null
-      }
-    });
+    const portal = await this.prisma.bitrixPortal.findUnique({ where: { domain } });
 
-    if (!portal || (dto.member_id && dto.member_id.trim() !== portal.memberId)) {
+    if (
+      !portal ||
+      !isInstalledBitrixPortal(portal) ||
+      (dto.member_id && dto.member_id.trim() !== portal.memberId)
+    ) {
       throw new UnauthorizedException('Invalid Bitrix authentication');
     }
 

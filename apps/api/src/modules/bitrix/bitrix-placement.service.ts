@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixRestClient } from './bitrix-rest.client';
+import { CANONICAL_INSTALLED_PORTAL_STATUS } from './bitrix-portal-status';
 
 const PRIMARY_PLACEMENT = {
   placement: 'CRM_DEAL_DETAIL_TAB',
@@ -224,11 +225,11 @@ export class BitrixPlacementService {
       create: {
         memberId: safeMemberId,
         domain: safeDomain,
-        appStatus: normalized.status?.trim() || 'INSTALLED'
+        appStatus: CANONICAL_INSTALLED_PORTAL_STATUS
       },
       update: {
         domain: safeDomain,
-        appStatus: normalized.status?.trim() || 'INSTALLED',
+        appStatus: CANONICAL_INSTALLED_PORTAL_STATUS,
         uninstalledAt: null
       }
     });
