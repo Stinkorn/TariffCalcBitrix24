@@ -178,18 +178,22 @@ model TariffAddition {
 
 model User {
   id           String       @id @default(uuid())
+  // Nullable for backward compatibility with existing non-Bitrix/local users.
   bitrixUserId String?
   email        String?
   fullName     String?
   username     String?
   passwordHash String?
   isActive     Boolean      @default(true)
+  enabled      Boolean      @default(true)
   roleId       String
+  // Nullable for backward compatibility; Bitrix allowlist rows must set both portalId and bitrixUserId.
   portalId     String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   role         Role         @relation(fields: [roleId], references: [id])
   portal       BitrixPortal? @relation(fields: [portalId], references: [id])
+  @@unique([portalId, bitrixUserId])
   @@index([bitrixUserId])
   @@index([portalId])
 }
