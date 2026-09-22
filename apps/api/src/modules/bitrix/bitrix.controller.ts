@@ -20,6 +20,8 @@ import {
 } from './bitrix-placement.util';
 import { BitrixPlacementService } from './bitrix-placement.service';
 import { Public } from '../auth/public.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { UserRoleCode } from '@prisma/client';
 
 type BitrixInstallPayload = {
   AUTH_ID?: string;
@@ -331,31 +333,37 @@ export class BitrixController {
 </html>`;
   }
   @Post('placement/bind')
+  @Roles(UserRoleCode.ADMIN)
   async placementBind(@Body() body: PlacementAuthPayload) {
     return this.bitrixPlacementService.bindDealTab(body.domain);
   }
 
   @Post('placement/bind-debug')
+  @Roles(UserRoleCode.ADMIN)
   async placementBindDebug(@Body() body: PlacementAuthPayload) {
     return this.bitrixPlacementService.bindDebugPlacement(body.domain);
   }
 
   @Post('placement/unbind')
+  @Roles(UserRoleCode.ADMIN)
   async placementUnbind(@Body() body: PlacementAuthPayload) {
     return this.bitrixPlacementService.unbindDealTab(body.domain);
   }
 
   @Post('placement/unbind-debug')
+  @Roles(UserRoleCode.ADMIN)
   async placementUnbindDebug(@Body() body: PlacementAuthPayload) {
     return this.bitrixPlacementService.unbindDebugPlacement(body.domain);
   }
 
   @Get('placement/list')
+  @Roles(UserRoleCode.ADMIN)
   async placementList(@Query('domain') domain?: string) {
     return this.bitrixPlacementService.getPlacementBindings(domain);
   }
 
   @Get('placement/status')
+  @Roles(UserRoleCode.ADMIN)
   async placementStatus() {
     return this.bitrixPlacementService.getStatus();
   }
@@ -394,6 +402,7 @@ export class BitrixController {
   }
 
   @Get('debug/context')
+  @Roles(UserRoleCode.ADMIN)
   debugContext(@Query() query: Record<string, unknown>) {
     const safeQuery = sanitizeContext(query);
     const parsed = parsePlacementOptions(safeQuery);

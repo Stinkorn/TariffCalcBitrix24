@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
 import { DictionariesService } from './dictionaries.service';
+import { Roles } from '../auth/roles.decorator';
+import { UserRoleCode } from '@prisma/client';
 
 type CreateLocationBody = {
   city?: string;
@@ -21,18 +23,21 @@ export class DictionariesController {
   }
 
   @Post('locations')
+  @Roles(UserRoleCode.ADMIN)
   @HttpCode(201)
   createLocation(@Body() body: CreateLocationBody) {
     return this.dictionariesService.createLocation(body);
   }
 
   @Post('locations/seed')
+  @Roles(UserRoleCode.ADMIN)
   @HttpCode(200)
   seedLocations() {
     return this.dictionariesService.seedLocations();
   }
 
   @Post('locations/sync/bitrix')
+  @Roles(UserRoleCode.ADMIN)
   @HttpCode(200)
   syncLocationsFromBitrix() {
     return this.dictionariesService.syncLocationsFromBitrix();

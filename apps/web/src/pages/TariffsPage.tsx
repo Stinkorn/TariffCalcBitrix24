@@ -15,7 +15,8 @@ const emptyRow: RowForm = { minDistance: '', maxDistance: '', minWeight: '', max
 function nullableNumber(value: string) { return value.trim() === '' ? undefined : Number(value); }
 
 export function TariffsPage() {
-  const { apiFetch } = useAuth();
+  const { apiFetch, user } = useAuth();
+  const canManageTariffs = user?.role === 'ADMIN';
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
   const [selected, setSelected] = useState<Tariff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,16 +87,15 @@ export function TariffsPage() {
   }
 
   return <main className="page"><section className="shell shell-compact">
-    <div className="section-head"><div><h1>Тарифы</h1><p className="muted">MVP-справочник тарифов и ставок.</p></div><button onClick={createTariff}>+ Создать тариф</button></div>
+    <div className="section-head"><div><h1>Тарифы</h1><p className="muted">MVP-справочник тарифов и ставок.</p></div>{canManageTariffs && <button onClick={createTariff}>+ Создать тариф</button>}</div>
     {error && <p className="error">{error}</p>}
     <section className="card"><table><thead><tr><th>Название</th><th>Тип</th><th>Валюта</th><th>Статус</th></tr></thead><tbody>
       {tariffs.map((tariff) => <tr key={tariff.id} className={selected?.id === tariff.id ? 'is-selected' : ''} onClick={() => void loadTariff(tariff.id)}><td>{tariff.name}</td><td>{tariff.tariffType.name}</td><td>{tariff.currency}</td><td>{tariff.active ? 'Активен' : 'Отключен'}</td></tr>)}
       {!loading && tariffs.length === 0 && <tr><td colSpan={4}>Тарифов пока нет.</td></tr>}
     </tbody></table></section>
     {selected && <section className="card tariff-editor"><div className="section-head"><div><h2>{selected.name}</h2><p className="muted">{selected.code} · {selected.tariffType.code} · {selected.currency}</p></div></div>
-      <div className="tariff-row-form"><label>От км<input type="number" value={rowForm.minDistance} onChange={(event) => setRowForm({ ...rowForm, minDistance: event.target.value })} /></label><label>До км<input type="number" value={rowForm.maxDistance} onChange={(event) => setRowForm({ ...rowForm, maxDistance: event.target.value })} /></label><label>Мин. вес, кг<input type="number" value={rowForm.minWeight} onChange={(event) => setRowForm({ ...rowForm, minWeight: event.target.value })} /></label><label>Макс. вес, кг<input type="number" value={rowForm.maxWeight} onChange={(event) => setRowForm({ ...rowForm, maxWeight: event.target.value })} /></label><label>Цена<input type="number" min="0" value={rowForm.price} onChange={(event) => setRowForm({ ...rowForm, price: event.target.value })} /></label><label>Описание<input value={rowForm.description} onChange={(event) => setRowForm({ ...rowForm, description: event.target.value })} /></label></div>
-      <div className="actions"><button className="secondary-button" onClick={() => { setRowForm(emptyRow); setEditingRowId(null); }}>Очистить</button><button onClick={saveRow}>{editingRowId ? 'Сохранить строку' : 'Добавить строку'}</button></div>
-      <table><thead><tr><th>От км</th><th>До км</th><th>Мин. вес</th><th>Макс. вес</th><th>Цена</th><th>Единица</th><th></th></tr></thead><tbody>{selected.rows?.map((row) => <tr key={row.id}><td>{row.minDistance ?? '—'}</td><td>{row.maxDistance ?? '—'}</td><td>{row.minWeight ?? '—'}</td><td>{row.maxWeight ?? '—'}</td><td>{row.price} {row.currency}</td><td>{row.unit}</td><td className="table-actions"><button className="secondary-button" onClick={() => startEdit(row)}>Изменить</button><button className="danger-button" onClick={() => void deleteRow(row.id)}>Удалить</button></td></tr>)}</tbody></table>
+      {canManageTariffs && <><div className="tariff-row-form"><label>От км<input type="number" value={rowForm.minDistance} onChange={(event) => setRowForm({ ...rowForm, minDistance: event.target.value })} /></label><label>До км<input type="number" value={rowForm.maxDistance} onChange={(event) => setRowForm({ ...rowForm, maxDistance: event.target.value })} /></label><label>Мин. вес, кг<input type="number" value={rowForm.minWeight} onChange={(event) => setRowForm({ ...rowForm, minWeight: event.target.value })} /></label><label>Макс. вес, кг<input type="number" value={rowForm.maxWeight} onChange={(event) => setRowForm({ ...rowForm, maxWeight: event.target.value })} /></label><label>Цена<input type="number" min="0" value={rowForm.price} onChange={(event) => setRowForm({ ...rowForm, price: event.target.value })} /></label><label>Описание<input value={rowForm.description} onChange={(event) => setRowForm({ ...rowForm, description: event.target.value })} /></label></div><div className="actions"><button className="secondary-button" onClick={() => { setRowForm(emptyRow); setEditingRowId(null); }}>Очистить</button><button onClick={saveRow}>{editingRowId ? 'Сохранить строку' : 'Добавить строку'}</button></div></>}
+      <table><thead><tr><th>От км</th><th>До км</th><th>Мин. вес</th><th>Макс. вес</th><th>Цена</th><th>Единица</th>{canManageTariffs && <th></th>}</tr></thead><tbody>{selected.rows?.map((row) => <tr key={row.id}><td>{row.minDistance ?? '—'}</td><td>{row.maxDistance ?? '—'}</td><td>{row.minWeight ?? '—'}</td><td>{row.maxWeight ?? '—'}</td><td>{row.price} {row.currency}</td><td>{row.unit}</td>{canManageTariffs && <td className="table-actions"><button className="secondary-button" onClick={() => startEdit(row)}>Изменить</button><button className="danger-button" onClick={() => void deleteRow(row.id)}>Удалить</button></td>}</tr>)}</tbody></table>
     </section>}
   </section></main>;
 }

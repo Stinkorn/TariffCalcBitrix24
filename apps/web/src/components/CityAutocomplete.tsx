@@ -7,6 +7,7 @@ import {
   useState
 } from 'react';
 import { useDictionaries } from '../context/DictionariesContext';
+import { useAuth } from '../context/AuthContext';
 import type { LocationItem } from '../types/dictionaries';
 import { sendResizeToBitrix } from '../utils/bitrixResize';
 
@@ -59,6 +60,8 @@ export function CityAutocomplete({
     createLocation,
     upsertLocation
   } = useDictionaries();
+  const { user } = useAuth();
+  const canManageDictionaries = user?.role === 'ADMIN';
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState(defaultValue);
   const inputValue = isControlled ? value ?? '' : internalValue;
@@ -382,7 +385,7 @@ export function CityAutocomplete({
             <div className="city-autocomplete-state">Ничего не найдено</div>
           )}
 
-          {!loading && showAddAction && (
+          {!loading && showAddAction && canManageDictionaries && (
             <div className="city-autocomplete-create">
               <button
                 type="button"

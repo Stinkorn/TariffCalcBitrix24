@@ -7,6 +7,7 @@ import { BitrixAuthService } from './bitrix-auth.service';
 import { AppTokenService } from './app-token.service';
 import { AppJwtAuthGuard } from './app-jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [PrismaModule, BitrixModule, JwtModule.register({})],
@@ -17,6 +18,10 @@ import { APP_GUARD } from '@nestjs/core';
     {
       provide: APP_GUARD,
       useClass: AppJwtAuthGuard
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard
     }
   ],
   exports: [BitrixAuthService, AppTokenService]

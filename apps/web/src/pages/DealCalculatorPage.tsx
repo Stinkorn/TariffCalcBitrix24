@@ -374,7 +374,8 @@ function buildCalculationSnapshot(
 
 export function DealCalculatorPage() {
   const { dictionaries, bootstrapError, refreshBootstrap } = useDictionaries();
-  const { apiFetch } = useAuth();
+  const { apiFetch, user } = useAuth();
+  const canManageDictionaries = user?.role === 'ADMIN';
   const pageRef = useRef<HTMLElement | null>(null);
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
@@ -1490,9 +1491,11 @@ export function DealCalculatorPage() {
             <div className="accordion-body">
               <div className="section-head">
                 <h2>Справочник локаций</h2>
-                <button type="button" onClick={handleSyncLocationsFromBitrix} disabled={syncingLocations}>
-                  {syncingLocations ? 'Синхронизация...' : 'Синхронизировать из Bitrix24'}
-                </button>
+                {canManageDictionaries && (
+                  <button type="button" onClick={handleSyncLocationsFromBitrix} disabled={syncingLocations}>
+                    {syncingLocations ? 'Синхронизация...' : 'Синхронизировать из Bitrix24'}
+                  </button>
+                )}
               </div>
               <p className="muted">
                 Активных локаций: <b>{dictionaries.locations.length}</b>
