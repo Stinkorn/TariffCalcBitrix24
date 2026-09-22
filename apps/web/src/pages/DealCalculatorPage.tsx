@@ -5,6 +5,7 @@ import {
   type SelectedLocation
 } from '../components/CityAutocomplete';
 import { useDictionaries } from '../context/DictionariesContext';
+import { useAuth } from '../context/AuthContext';
 import type { BitrixLocationSyncResponse } from '../types/dictionaries';
 import { sendResizeToBitrix } from '../utils/bitrixResize';
 
@@ -372,7 +373,8 @@ function buildCalculationSnapshot(
 }
 
 export function DealCalculatorPage() {
-  const { apiBaseUrl, dictionaries, bootstrapError, refreshBootstrap } = useDictionaries();
+  const { dictionaries, bootstrapError, refreshBootstrap } = useDictionaries();
+  const { apiFetch } = useAuth();
   const pageRef = useRef<HTMLElement | null>(null);
   const [searchParams] = useSearchParams();
   const initialDealId = searchParams.get('dealId') ?? '';
@@ -531,10 +533,10 @@ export function DealCalculatorPage() {
   async function loadHistory(dealId: string) {
     const byDeal = dealId.trim();
     const url = byDeal
-      ? `${apiBaseUrl}/calculations/by-deal/${encodeURIComponent(byDeal)}`
-      : `${apiBaseUrl}/calculations/recent`;
+      ? `/calculations/by-deal/${encodeURIComponent(byDeal)}`
+      : '/calculations/recent';
 
-    const response = await fetch(url);
+    const response = await apiFetch(url);
     if (!response.ok) {
       throw new Error(`History HTTP ${response.status}`);
     }
@@ -554,8 +556,8 @@ export function DealCalculatorPage() {
       }
 
       const query = search.toString();
-      const response = await fetch(
-        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(dealId)}/counterparty${query ? `?${query}` : ''}`
+      const response = await apiFetch(
+        `/bitrix/deals/${encodeURIComponent(dealId)}/counterparty${query ? `?${query}` : ''}`
       );
 
       if (!response.ok) {
@@ -583,8 +585,8 @@ export function DealCalculatorPage() {
       }
 
       const query = search.toString();
-      const response = await fetch(
-        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(dealId)}/prefill${query ? `?${query}` : ''}`
+      const response = await apiFetch(
+        `/bitrix/deals/${encodeURIComponent(dealId)}/prefill${query ? `?${query}` : ''}`
       );
 
       if (!response.ok) {
@@ -809,7 +811,7 @@ export function DealCalculatorPage() {
     const tariffStages = await Promise.all(
       fallbackStages.map(async (stage) => {
         try {
-          const response = await fetch(`${apiBaseUrl}/calculator/find-tariff`, {
+          const response = await apiFetch('/calculator/find-tariff', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -884,7 +886,7 @@ export function DealCalculatorPage() {
       }));
 
     try {
-      const response = await fetch(`${apiBaseUrl}/calculations`, {
+      const response = await apiFetch('/calculations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -942,7 +944,7 @@ export function DealCalculatorPage() {
     setSyncResult(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/dictionaries/locations/sync/bitrix`, {
+      const response = await apiFetch('/dictionaries/locations/sync/bitrix', {
         method: 'POST'
       });
 
@@ -973,8 +975,8 @@ export function DealCalculatorPage() {
     const snapshot = buildCalculationSnapshot(formState, stages, services);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/bitrix/deals/${encodeURIComponent(formState.dealId.trim())}/timeline-comment`,
+      const response = await apiFetch(
+        `/bitrix/deals/${encodeURIComponent(formState.dealId.trim())}/timeline-comment`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

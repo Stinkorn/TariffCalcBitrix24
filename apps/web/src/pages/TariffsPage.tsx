@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useDictionaries } from '../context/DictionariesContext';
+import { useAuth } from '../context/AuthContext';
 
 type Tariff = {
   id: string; name: string; code: string; active: boolean; currency: string; description: string | null;
@@ -15,7 +15,7 @@ const emptyRow: RowForm = { minDistance: '', maxDistance: '', minWeight: '', max
 function nullableNumber(value: string) { return value.trim() === '' ? undefined : Number(value); }
 
 export function TariffsPage() {
-  const { apiBaseUrl } = useDictionaries();
+  const { apiFetch } = useAuth();
   const [tariffs, setTariffs] = useState<Tariff[]>([]);
   const [selected, setSelected] = useState<Tariff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +26,7 @@ export function TariffsPage() {
   async function loadTariffs(selectId?: string) {
     setLoading(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/tariffs`);
+      const response = await apiFetch('/tariffs');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json() as Tariff[];
       setTariffs(data);
@@ -40,7 +40,7 @@ export function TariffsPage() {
   }
 
   async function loadTariff(id: string) {
-    const response = await fetch(`${apiBaseUrl}/tariffs/${encodeURIComponent(id)}`);
+    const response = await apiFetch(`/tariffs/${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     setSelected(await response.json() as Tariff);
   }
@@ -53,7 +53,7 @@ export function TariffsPage() {
     const code = window.prompt('Код тарифа, например AUTO_MSK');
     if (!code?.trim()) return;
     try {
-      const response = await fetch(`${apiBaseUrl}/tariffs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, typeCode: 'AUTO_DISTANCE_WEIGHT', currency: 'RUB' }) });
+      const response = await apiFetch('/tariffs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, typeCode: 'AUTO_DISTANCE_WEIGHT', currency: 'RUB' }) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const tariff = await response.json() as Tariff;
       await loadTariffs(tariff.id);
@@ -63,9 +63,9 @@ export function TariffsPage() {
   async function saveRow() {
     if (!selected || !rowForm.price.trim()) { setError('Укажите цену строки тарифа.'); return; }
     const body = { minDistance: nullableNumber(rowForm.minDistance), maxDistance: nullableNumber(rowForm.maxDistance), minWeight: nullableNumber(rowForm.minWeight), maxWeight: nullableNumber(rowForm.maxWeight), price: Number(rowForm.price), description: rowForm.description || undefined, currency: selected.currency, stageType: 'AUTO', unit: 'KM', priority: editingRowId ? undefined : (selected.rows?.length ?? 0) + 1 };
-    const url = editingRowId ? `${apiBaseUrl}/tariffs/rows/${editingRowId}` : `${apiBaseUrl}/tariffs/${selected.id}/rows`;
+    const url = editingRowId ? `/tariffs/rows/${editingRowId}` : `/tariffs/${selected.id}/rows`;
     try {
-      const response = await fetch(url, { method: editingRowId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const response = await apiFetch(url, { method: editingRowId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setRowForm(emptyRow); setEditingRowId(null); await loadTariff(selected.id); await loadTariffs(selected.id);
     } catch (requestError) { setError(`Не удалось сохранить строку: ${String(requestError)}`); }
@@ -79,7 +79,7 @@ export function TariffsPage() {
   async function deleteRow(rowId: string) {
     if (!selected || !window.confirm('Удалить строку тарифа?')) return;
     try {
-      const response = await fetch(`${apiBaseUrl}/tariffs/rows/${rowId}`, { method: 'DELETE' });
+      const response = await apiFetch(`/tariffs/rows/${rowId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await loadTariff(selected.id); await loadTariffs(selected.id);
     } catch (requestError) { setError(`Не удалось удалить строку: ${String(requestError)}`); }

@@ -7,11 +7,8 @@ import {
   useState
 } from 'react';
 import type { DictionaryBootstrap, LocationItem } from '../types/dictionaries';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ??
-  import.meta.env.VITE_API_BASE_URL ??
-  'http://localhost:9099';
+import { API_BASE_URL } from '../api/config';
+import { useAuth } from './AuthContext';
 
 const EMPTY_DICTIONARIES: DictionaryBootstrap = {
   routeTypes: ['KLD_OUT', 'KLD_IN'],
@@ -61,6 +58,7 @@ function dedupeLocations(items: LocationItem[]) {
 }
 
 export function DictionariesProvider({ children }: PropsWithChildren) {
+  const { apiFetch } = useAuth();
   const [dictionaries, setDictionaries] = useState<DictionaryBootstrap>(EMPTY_DICTIONARIES);
   const [bootstrapLoaded, setBootstrapLoaded] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -97,7 +95,7 @@ export function DictionariesProvider({ children }: PropsWithChildren) {
 
     const request = (async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/dictionaries/bootstrap`);
+        const response = await apiFetch('/dictionaries/bootstrap');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -147,8 +145,8 @@ export function DictionariesProvider({ children }: PropsWithChildren) {
 
     const request = (async () => {
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/dictionaries/locations?search=${encodeURIComponent(trimmedQuery)}`
+        const response = await apiFetch(
+          `/dictionaries/locations?search=${encodeURIComponent(trimmedQuery)}`
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -175,7 +173,7 @@ export function DictionariesProvider({ children }: PropsWithChildren) {
   }
 
   async function createLocation(input: { city: string; region: string }) {
-    const response = await fetch(`${API_BASE_URL}/dictionaries/locations`, {
+    const response = await apiFetch('/dictionaries/locations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input)
