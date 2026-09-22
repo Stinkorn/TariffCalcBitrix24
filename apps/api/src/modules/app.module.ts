@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { DictionariesModule } from './dictionaries/dictionaries.module';
 import { TariffsModule } from './tariffs/tariffs.module';
+import { AuthModule } from './auth/auth.module';
 
 const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
 
@@ -22,6 +23,7 @@ const defaultWebDistPath = resolve(__dirname, '..', '..', '..', 'web', 'dist');
       exclude: ['/health', '/calculator*', '/calculations*', '/bitrix*', '/tariffs*']
     }),
     PrismaModule,
+    AuthModule,
     HealthModule,
     BitrixModule,
     DictionariesModule,
