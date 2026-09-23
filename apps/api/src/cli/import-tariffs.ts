@@ -90,12 +90,6 @@ const FK_RULES: Array<[string, string, string]> = [
   ['mainline_auto_rates', 'service_location_id', 'locations'], ['mainline_auto_rates', 'return_location_id', 'locations'],
 ];
 
-const NORMALIZED_TABLES = [
-  'territory_groups', 'cargo', 'containers', 'container_statuses', 'terminals', 'location_distances',
-  'auto_dry_rates', 'auto_ref_rates', 'auto_rules', 'rail_rates', 'rail_service_rates', 'sea_lilo_rates',
-  'sea_fios_rates', 'sea_fios_rules', 'container_usage_rates', 'mainline_auto_rates', 'mainline_auto_rules',
-];
-
 function isBlank(value: Cell): boolean {
   return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
 }
@@ -281,8 +275,25 @@ async function databaseDryRun(sheets: Record<string, Row[]>, errors: string[], w
   const prisma = new PrismaClient();
   try {
     const locations = await prisma.location.findMany({ select: { id: true, city: true, region: true, country: true, code: true, tariffLocationId: true, territoryGroupId: true } });
-    const normalizedTableCounts: Record<string, number> = {};
-    for (const table of NORMALIZED_TABLES) normalizedTableCounts[table] = await (prisma as any)[delegateName(table)].count();
+    const normalizedTableCounts = {
+      territory_groups: await prisma.territoryGroup.count(),
+      cargo: await prisma.cargo.count(),
+      containers: await prisma.container.count(),
+      container_statuses: await prisma.containerStatus.count(),
+      terminals: await prisma.terminal.count(),
+      location_distances: await prisma.locationDistance.count(),
+      auto_dry_rates: await prisma.autoDryRate.count(),
+      auto_ref_rates: await prisma.autoRefRate.count(),
+      auto_rules: await prisma.autoRule.count(),
+      rail_rates: await prisma.railRate.count(),
+      rail_service_rates: await prisma.railServiceRate.count(),
+      sea_lilo_rates: await prisma.seaLiloRate.count(),
+      sea_fios_rates: await prisma.seaFiosRate.count(),
+      sea_fios_rules: await prisma.seaFiosRule.count(),
+      container_usage_rates: await prisma.containerUsageRate.count(),
+      mainline_auto_rates: await prisma.mainlineAutoRate.count(),
+      mainline_auto_rules: await prisma.mainlineAutoRule.count(),
+    };
     for (const [table, count] of Object.entries(normalizedTableCounts)) if (count !== 0) errors.push(`Database blocker: ${table} contains ${count} rows; expected 0 for initial bootstrap.`);
     const existingByKey = new Map<string, LocationRow[]>();
     const existingCodes = new Set(locations.map((location) => normalizeKey(location.code)));
@@ -302,6 +313,7 @@ async function databaseDryRun(sheets: Record<string, Row[]>, errors: string[], w
       if (matches.length > 1) {
         plan.ambiguousCount += 1;
         plan.ambiguousLocations.push({ locationId: workbookLocationId, city: row.location_city, region: row.location_region, matchCount: matches.length });
+        errors.push(`Ambiguous Location match for ${asString(row.location_city)}, ${asString(row.location_region)}: ${matches.length} database matches`);
         continue;
       }
       if (matches.length === 0) {
@@ -335,10 +347,6 @@ async function databaseDryRun(sheets: Record<string, Row[]>, errors: string[], w
   }
 }
 
-function delegateName(table: string): string {
-  return table.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
-}
-
 function printReport(report: any) {
   console.log(`Mode: ${report.mode}`);
   console.log(`Workbook: ${report.workbookPath}`);
@@ -368,7 +376,7 @@ async function main() {
     database = { locationCount: result.locationCount, normalizedTableCounts: result.normalizedTableCounts };
     locationPlan = result.locationPlan;
   }
-  const blockerCount = errors.length + locationPlan.ambiguousCount + locationPlan.conflictCount + locationPlan.codeCollisions.length + Object.values(database.normalizedTableCounts).filter((count) => count !== 0).length;
+  const blockerCount = errors.length;
   const report = {
     mode: args.mode,
     workbookPath: args.file,
@@ -380,7 +388,7 @@ async function main() {
     foreignKeyValidation,
     database,
     locationPlan,
-    summary: { blockerCount, warningCount: warnings.length + locationPlan.countryWarningCount, readyForApply: args.mode === 'validate' ? errors.length === 0 : blockerCount === 0 },
+    summary: { blockerCount, warningCount: warnings.length, readyForApply: errors.length === 0 },
   };
   printReport(report);
   if (args.report) writeFileSync(resolve(args.report), JSON.stringify(report, null, 2));
