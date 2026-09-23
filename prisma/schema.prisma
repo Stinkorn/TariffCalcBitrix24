@@ -40,6 +40,31 @@ enum TariffUnit {
   DAY
 }
 
+enum ContainerCategory {
+  DRY
+  REF
+}
+
+enum ContainerState {
+  LOADED
+  EMPTY
+}
+
+enum ContainerStatusCode {
+  SOC
+  COC
+}
+
+enum MainlineOperationType {
+  LOAD
+  UNLOAD
+}
+
+enum RailServiceUnit {
+  PER_TRIP
+  PER_SERVICE
+}
+
 model Role {
   id          String       @id @default(uuid())
   code        UserRoleCode @unique
@@ -49,27 +74,27 @@ model Role {
 }
 
 model BitrixPortal {
-  id          String         @id @default(uuid())
-  memberId    String         @unique
-  domain      String         @unique
-  appStatus   String         @default("INSTALLED")
-  installedAt DateTime       @default(now())
+  id            String        @id @default(uuid())
+  memberId      String        @unique
+  domain        String        @unique
+  appStatus     String        @default("INSTALLED")
+  installedAt   DateTime      @default(now())
   uninstalledAt DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  users       User[]
-  tokens      BitrixToken[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  users         User[]
+  tokens        BitrixToken[]
 }
 
 model BitrixToken {
-  id           String      @id @default(uuid())
+  id           String       @id @default(uuid())
   portalId     String
   accessToken  String
   refreshToken String
   expiresAt    DateTime
   scope        String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
   portal       BitrixPortal @relation(fields: [portalId], references: [id], onDelete: Cascade)
 
   @@index([portalId])
@@ -77,19 +102,31 @@ model BitrixToken {
 }
 
 model Location {
-  id              String    @id @default(cuid())
-  city            String
-  region          String
-  country         String    @default("Россия")
-  code            String    @unique
-  isActive        Boolean   @default(true)
-  sortOrder       Int       @default(100)
-  bitrixListId    String?
-  bitrixElementId String?
-  bitrixUpdatedAt DateTime?
-  source          String?   @default("manual")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                   String             @id @default(cuid())
+  city                 String
+  region               String
+  country              String             @default("Россия")
+  code                 String?            @unique
+  tariffLocationId     Int?               @unique @map("location_id")
+  territoryGroupId     Int?               @map("territory_group_id")
+  isActive             Boolean            @default(true)
+  sortOrder            Int                @default(100)
+  bitrixListId         String?
+  bitrixElementId      String?
+  bitrixUpdatedAt      DateTime?
+  source               String?            @default("manual")
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  territoryGroup       TerritoryGroup?    @relation(fields: [territoryGroupId], references: [id])
+  terminals            Terminal[]
+  distances            LocationDistance[] @relation("LocationDistances")
+  railRatesFrom        RailRate[]         @relation("RailRateFromLocation")
+  railRatesTo          RailRate[]         @relation("RailRateToLocation")
+  railServiceRatesFrom RailServiceRate[]  @relation("RailServiceRateFromLocation")
+  railServiceRatesTo   RailServiceRate[]  @relation("RailServiceRateToLocation")
+  mainlineSetupRates   MainlineAutoRate[] @relation("MainlineSetupLocation")
+  mainlineServiceRates MainlineAutoRate[] @relation("MainlineServiceLocation")
+  mainlineReturnRates  MainlineAutoRate[] @relation("MainlineReturnLocation")
 
   @@unique([city, region])
   @@unique([bitrixListId, bitrixElementId])
@@ -107,19 +144,19 @@ model TariffType {
 }
 
 model Tariff {
-  id          String           @id @default(cuid())
-  name        String
-  code        String           @unique
+  id           String           @id @default(cuid())
+  name         String
+  code         String           @unique
   tariffTypeId String
-  active      Boolean          @default(true)
-  currency    String           @default("RUB")
-  description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  tariffType  TariffType       @relation(fields: [tariffTypeId], references: [id])
-  stages      TariffStage[]
-  rows        TariffRow[]
-  additions   TariffAddition[]
+  active       Boolean          @default(true)
+  currency     String           @default("RUB")
+  description  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tariffType   TariffType       @relation(fields: [tariffTypeId], references: [id])
+  stages       TariffStage[]
+  rows         TariffRow[]
+  additions    TariffAddition[]
 
   @@index([tariffTypeId, active])
 }
@@ -136,25 +173,25 @@ model TariffStage {
 }
 
 model TariffRow {
-  id             String          @id @default(cuid())
-  tariffId       String
-  minDistance    Decimal?        @db.Decimal(12, 2)
-  maxDistance    Decimal?        @db.Decimal(12, 2)
-  minWeight      Decimal?        @db.Decimal(18, 3)
-  maxWeight      Decimal?        @db.Decimal(18, 3)
+  id              String           @id @default(cuid())
+  tariffId        String
+  minDistance     Decimal?         @db.Decimal(12, 2)
+  maxDistance     Decimal?         @db.Decimal(12, 2)
+  minWeight       Decimal?         @db.Decimal(18, 3)
+  maxWeight       Decimal?         @db.Decimal(18, 3)
   containerTypeId String?
-  fromLocationId String?
-  toLocationId   String?
-  routeDirection RouteDirection?
-  stageType      TariffStageType?
-  unit           TariffUnit      @default(FIXED)
-  price          Decimal         @db.Decimal(18, 2)
-  currency       String
-  description    String?
-  priority       Int             @default(100)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  tariff         Tariff          @relation(fields: [tariffId], references: [id], onDelete: Cascade)
+  fromLocationId  String?
+  toLocationId    String?
+  routeDirection  RouteDirection?
+  stageType       TariffStageType?
+  unit            TariffUnit       @default(FIXED)
+  price           Decimal          @db.Decimal(18, 2)
+  currency        String
+  description     String?
+  priority        Int              @default(100)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tariff          Tariff           @relation(fields: [tariffId], references: [id], onDelete: Cascade)
 
   @@index([tariffId, priority])
   @@index([tariffId, fromLocationId, toLocationId])
@@ -176,81 +213,357 @@ model TariffAddition {
   @@index([tariffId])
 }
 
+// TODO: Keep the legacy Tariff* models until the normalized tariff engine and its API
+// replace the existing tariff endpoints and calculation persistence.
+
 model User {
-  id           String       @id @default(uuid())
+  id           String        @id @default(uuid())
   // Nullable for backward compatibility with existing non-Bitrix/local users.
   bitrixUserId String?
   email        String?
   fullName     String?
   username     String?
   passwordHash String?
-  isActive     Boolean      @default(true)
-  enabled      Boolean      @default(true)
+  isActive     Boolean       @default(true)
+  enabled      Boolean       @default(true)
   roleId       String
   // Nullable for backward compatibility; Bitrix allowlist rows must set both portalId and bitrixUserId.
   portalId     String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  role         Role         @relation(fields: [roleId], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  role         Role          @relation(fields: [roleId], references: [id])
   portal       BitrixPortal? @relation(fields: [portalId], references: [id])
+
   @@unique([portalId, bitrixUserId])
   @@index([bitrixUserId])
   @@index([portalId])
 }
 
 model Calculation {
-  id            String            @id @default(uuid())
-  portalDomain  String?
-  dealId        String?
-  counterpartyId String?
+  id               String            @id @default(uuid())
+  portalDomain     String?
+  dealId           String?
+  counterpartyId   String?
   counterpartyType String?
   counterpartyName String?
-  routeType     String?
-  origin        String
-  destination   String
-  weightKg      Decimal           @db.Decimal(18, 3)
-  volumeM3      Decimal           @db.Decimal(18, 3)
-  transportType String
-  containerType String?
-  containerStatus String?
-  currency      String
-  totalCost     Decimal           @db.Decimal(18, 2)
-  clientPrice   Decimal           @db.Decimal(18, 2)
-  margin        Decimal           @db.Decimal(18, 2)
-  marginType    String?
-  marginValue   Float?
-  services      Json?
-  warnings      Json?
-  status        String            @default("DRAFT")
-  tariffSnapshot Json?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  lines         CalculationLine[]
+  routeType        String?
+  origin           String
+  destination      String
+  weightKg         Decimal           @db.Decimal(18, 3)
+  volumeM3         Decimal           @db.Decimal(18, 3)
+  transportType    String
+  containerType    String?
+  containerStatus  String?
+  currency         String
+  totalCost        Decimal           @db.Decimal(18, 2)
+  clientPrice      Decimal           @db.Decimal(18, 2)
+  margin           Decimal           @db.Decimal(18, 2)
+  marginType       String?
+  marginValue      Float?
+  services         Json?
+  warnings         Json?
+  status           String            @default("DRAFT")
+  tariffSnapshot   Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lines            CalculationLine[]
 
   @@index([dealId])
   @@index([createdAt])
 }
 
 model CalculationLine {
-  id            String      @id @default(uuid())
-  calculationId String
-  stage         String
-  name          String
-  cost          Decimal     @db.Decimal(18, 2)
-  currency      String
-  tariffId      String?
-  tariffRowId   String?
-  tariffName    String?
-  tariffPrice   Decimal?    @db.Decimal(18, 2)
-  tariffUnit    String?
+  id                 String      @id @default(uuid())
+  calculationId      String
+  stage              String
+  name               String
+  cost               Decimal     @db.Decimal(18, 2)
+  currency           String
+  tariffId           String?
+  tariffRowId        String?
+  tariffName         String?
+  tariffPrice        Decimal?    @db.Decimal(18, 2)
+  tariffUnit         String?
   tariffCalculatedAt DateTime?
-  sortOrder     Int         @default(0)
-  createdAt     DateTime    @default(now())
-  calculation   Calculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
+  sortOrder          Int         @default(0)
+  createdAt          DateTime    @default(now())
+  calculation        Calculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
 
   @@index([calculationId, sortOrder])
 }
 
-// TODO: Add dictionaries and tariff tables after business formulas are finalized:
-// - ContainerType, ContainerStatus, Location, TransportType
-// - AutoTariff, MainlineTariff, SeaFreightTariff, StorageTariff, etc.
+model TerritoryGroup {
+  id           Int           @id @map("territory_group_id")
+  code         String        @map("territory_group_code")
+  name         String        @map("territory_group_name")
+  locations    Location[]
+  autoRefRates AutoRefRate[]
+
+  @@unique([code])
+  @@map("territory_groups")
+}
+
+model Cargo {
+  id          Int    @id @map("cargo_id")
+  name        String @map("cargo_name")
+  etsng       String @map("cargo_etsng")
+  tariffClass Int    @map("cargo_tariff_class")
+
+  @@index([tariffClass])
+  @@map("cargo")
+}
+
+model Container {
+  id               Int                  @id @map("container_id")
+  size             Int                  @map("container_size")
+  type             String               @map("container_type")
+  category         ContainerCategory    @map("container_category")
+  railRates        RailRate[]
+  railServiceRates RailServiceRate[]
+  seaLiloRates     SeaLiloRate[]
+  seaFiosRates     SeaFiosRate[]
+  usageRates       ContainerUsageRate[]
+
+  @@map("containers")
+}
+
+model ContainerStatus {
+  id           Int                  @id @map("status_id")
+  code         ContainerStatusCode  @map("status_code")
+  name         String               @map("status_name")
+  seaLiloRates SeaLiloRate[]
+  usageRates   ContainerUsageRate[]
+
+  @@unique([code])
+  @@map("container_statuses")
+}
+
+model Terminal {
+  id               Int                @id @map("terminal_id")
+  name             String             @map("terminal_name")
+  locationId       Int                @map("location_id")
+  location         Location           @relation(fields: [locationId], references: [tariffLocationId])
+  distances        LocationDistance[]
+  autoDryRates     AutoDryRate[]
+  autoRules        AutoRule[]
+  seaLiloRatesFrom SeaLiloRate[]      @relation("SeaLiloFromTerminal")
+  seaLiloRatesTo   SeaLiloRate[]      @relation("SeaLiloToTerminal")
+  seaFiosRatesFrom SeaFiosRate[]      @relation("SeaFiosFromTerminal")
+  seaFiosRatesTo   SeaFiosRate[]      @relation("SeaFiosToTerminal")
+
+  @@index([locationId])
+  @@map("terminals")
+}
+
+model LocationDistance {
+  id          Int      @id @default(autoincrement())
+  locationId  Int      @map("location_id")
+  terminalId  Int      @map("terminal_id")
+  roundTripKm Decimal  @map("round_trip_km") @db.Decimal(12, 2)
+  location    Location @relation("LocationDistances", fields: [locationId], references: [tariffLocationId])
+  terminal    Terminal @relation(fields: [terminalId], references: [id])
+
+  @@unique([locationId, terminalId])
+  @@index([terminalId, locationId])
+  @@map("location_distances")
+}
+
+model AutoDryRate {
+  id             Int       @id @map("rate_id")
+  terminalId     Int       @map("terminal_id")
+  kmFrom         Int       @map("km_from")
+  kmTo           Int       @map("km_to")
+  weightFromKg   Int       @map("weight_from_kg")
+  weightToKg     Int?      @map("weight_to_kg")
+  rate           Decimal   @db.Decimal(18, 2)
+  rateStartDate  DateTime  @map("rate_start_date")
+  rateFinishDate DateTime? @map("rate_finish_date")
+  terminal       Terminal  @relation(fields: [terminalId], references: [id])
+
+  @@index([terminalId, kmFrom, kmTo, weightFromKg, weightToKg])
+  @@index([rateStartDate, rateFinishDate])
+  @@map("auto_dry_rates")
+}
+
+model AutoRefRate {
+  id               Int            @id @map("rate_id")
+  territoryGroupId Int            @map("territory_group_id")
+  coefficient      Decimal?       @db.Decimal(18, 6)
+  surchargeRub     Decimal?       @map("surcharge_rub") @db.Decimal(18, 2)
+  gensetPerDayRub  Decimal        @map("genset_per_day_rub") @db.Decimal(18, 2)
+  rateStartDate    DateTime       @map("rate_start_date")
+  rateFinishDate   DateTime?      @map("rate_finish_date")
+  territoryGroup   TerritoryGroup @relation(fields: [territoryGroupId], references: [id])
+
+  @@index([territoryGroupId, rateStartDate, rateFinishDate])
+  @@map("auto_ref_rates")
+}
+
+model AutoRule {
+  id                       Int       @id @map("rule_id")
+  terminalId               Int       @map("terminal_id")
+  extraAddressRub          Decimal   @map("extra_address_rub") @db.Decimal(18, 2)
+  deadheadFullRate         Boolean   @map("deadhead_full_rate")
+  overweightThresholdKg    Int       @map("overweight_threshold_kg")
+  overweightPerTonRub      Decimal   @map("overweight_per_ton_rub") @db.Decimal(18, 2)
+  dangerousCargoRub        Decimal   @map("dangerous_cargo_rub") @db.Decimal(18, 2)
+  freeLoadingHours         Int       @map("free_loading_hours")
+  overtimePerHourRub       Decimal   @map("overtime_per_hour_rub") @db.Decimal(18, 2)
+  gensetOvertimePerHourRub Decimal?  @map("genset_overtime_per_hour_rub") @db.Decimal(18, 2)
+  customsFreeHours         Int       @map("customs_free_hours")
+  customsPerHourRub        Decimal   @map("customs_per_hour_rub") @db.Decimal(18, 2)
+  customsMaxPerDayRub      Decimal   @map("customs_max_per_day_rub") @db.Decimal(18, 2)
+  roundPartialTonUp        Boolean   @map("round_partial_ton_up")
+  roundPartialHourUp       Boolean   @map("round_partial_hour_up")
+  rateStartDate            DateTime  @map("rate_start_date")
+  rateFinishDate           DateTime? @map("rate_finish_date")
+  roundDistanceKmUp        Boolean   @map("round_distance_km_up")
+  terminal                 Terminal  @relation(fields: [terminalId], references: [id])
+
+  @@index([terminalId, rateStartDate, rateFinishDate])
+  @@map("auto_rules")
+}
+
+model RailRate {
+  id               Int            @id @map("rate_id")
+  fromLocationId   Int            @map("from_location_id")
+  toLocationId     Int            @map("to_location_id")
+  containerId      Int            @map("container_id")
+  containerState   ContainerState @map("container_state")
+  cargoTariffClass Int?           @map("cargo_tariff_class")
+  freeStorageDays  Int?           @map("free_storage_days")
+  rate             Decimal        @db.Decimal(18, 2)
+  rateStartDate    DateTime       @map("rate_start_date")
+  rateFinishDate   DateTime?      @map("rate_finish_date")
+  fromLocation     Location       @relation("RailRateFromLocation", fields: [fromLocationId], references: [tariffLocationId])
+  toLocation       Location       @relation("RailRateToLocation", fields: [toLocationId], references: [tariffLocationId])
+  container        Container      @relation(fields: [containerId], references: [id])
+
+  @@index([fromLocationId, toLocationId, containerId, containerState, rateStartDate, rateFinishDate])
+  @@map("rail_rates")
+}
+
+model RailServiceRate {
+  id             Int             @id @map("rate_id")
+  fromLocationId Int             @map("from_location_id")
+  toLocationId   Int             @map("to_location_id")
+  containerId    Int             @map("container_id")
+  containerState ContainerState  @map("container_state")
+  serviceCode    String          @map("service_code")
+  serviceUnit    RailServiceUnit @map("service_unit")
+  rate           Decimal         @db.Decimal(18, 2)
+  rateStartDate  DateTime        @map("rate_start_date")
+  rateFinishDate DateTime?       @map("rate_finish_date")
+  fromLocation   Location        @relation("RailServiceRateFromLocation", fields: [fromLocationId], references: [tariffLocationId])
+  toLocation     Location        @relation("RailServiceRateToLocation", fields: [toLocationId], references: [tariffLocationId])
+  container      Container       @relation(fields: [containerId], references: [id])
+
+  @@index([fromLocationId, toLocationId, containerId, serviceCode, serviceUnit, rateStartDate, rateFinishDate])
+  @@map("rail_service_rates")
+}
+
+model SeaLiloRate {
+  id             Int             @id @map("rate_id")
+  fromTerminalId Int             @map("from_terminal_id")
+  toTerminalId   Int             @map("to_terminal_id")
+  containerId    Int             @map("container_id")
+  statusId       Int             @map("status_id")
+  containerState ContainerState  @map("container_state")
+  rate           Decimal         @db.Decimal(18, 2)
+  rateStartDate  DateTime        @map("rate_start_date")
+  rateFinishDate DateTime?       @map("rate_finish_date")
+  fromTerminal   Terminal        @relation("SeaLiloFromTerminal", fields: [fromTerminalId], references: [id])
+  toTerminal     Terminal        @relation("SeaLiloToTerminal", fields: [toTerminalId], references: [id])
+  container      Container       @relation(fields: [containerId], references: [id])
+  status         ContainerStatus @relation(fields: [statusId], references: [id])
+
+  @@index([fromTerminalId, toTerminalId, containerId, statusId, containerState, rateStartDate, rateFinishDate])
+  @@map("sea_lilo_rates")
+}
+
+model SeaFiosRate {
+  id             Int            @id @map("rate_id")
+  fromTerminalId Int            @map("from_terminal_id")
+  toTerminalId   Int            @map("to_terminal_id")
+  containerId    Int            @map("container_id")
+  containerState ContainerState @map("container_state")
+  rate           Decimal        @db.Decimal(18, 2)
+  rateStartDate  DateTime       @map("rate_start_date")
+  rateFinishDate DateTime?      @map("rate_finish_date")
+  fromTerminal   Terminal       @relation("SeaFiosFromTerminal", fields: [fromTerminalId], references: [id])
+  toTerminal     Terminal       @relation("SeaFiosToTerminal", fields: [toTerminalId], references: [id])
+  container      Container      @relation(fields: [containerId], references: [id])
+
+  @@index([fromTerminalId, toTerminalId, containerId, containerState, rateStartDate, rateFinishDate])
+  @@map("sea_fios_rates")
+}
+
+model SeaFiosRule {
+  id             Int       @id @map("rule_id")
+  code           String    @map("rule_code")
+  value          Decimal   @map("rule_value") @db.Decimal(18, 6)
+  unit           String    @map("rule_unit")
+  rateStartDate  DateTime  @map("rate_start_date")
+  rateFinishDate DateTime? @map("rate_finish_date")
+
+  @@index([code, rateStartDate, rateFinishDate])
+  @@map("sea_fios_rules")
+}
+
+model ContainerUsageRate {
+  id             Int             @id @map("rate_id")
+  containerId    Int             @map("container_id")
+  statusId       Int             @map("status_id")
+  rate           Decimal         @db.Decimal(18, 2)
+  rateStartDate  DateTime        @map("rate_start_date")
+  rateFinishDate DateTime?       @map("rate_finish_date")
+  container      Container       @relation(fields: [containerId], references: [id])
+  status         ContainerStatus @relation(fields: [statusId], references: [id])
+
+  @@index([containerId, statusId, rateStartDate, rateFinishDate])
+  @@map("container_usage_rates")
+}
+
+model MainlineAutoRate {
+  id                Int                   @id @map("rate_id")
+  operationType     MainlineOperationType @map("operation_type")
+  setupLocationId   Int                   @map("setup_location_id")
+  serviceLocationId Int                   @map("service_location_id")
+  returnLocationId  Int                   @map("return_location_id")
+  weightFromKg      Int                   @map("weight_from_kg")
+  weightToKg        Int?                  @map("weight_to_kg")
+  rate              Decimal               @db.Decimal(18, 2)
+  rateStartDate     DateTime              @map("rate_start_date")
+  rateFinishDate    DateTime?             @map("rate_finish_date")
+  setupLocation     Location              @relation("MainlineSetupLocation", fields: [setupLocationId], references: [tariffLocationId])
+  serviceLocation   Location              @relation("MainlineServiceLocation", fields: [serviceLocationId], references: [tariffLocationId])
+  returnLocation    Location              @relation("MainlineReturnLocation", fields: [returnLocationId], references: [tariffLocationId])
+
+  @@index([operationType, setupLocationId, serviceLocationId, returnLocationId, rateStartDate, rateFinishDate])
+  @@index([weightFromKg, weightToKg])
+  @@map("mainline_auto_rates")
+}
+
+model MainlineAutoRule {
+  id                       Int       @id @map("rule_id")
+  extraAddressRub          Decimal   @map("extra_address_rub") @db.Decimal(18, 2)
+  deadheadFullRate         Boolean   @map("deadhead_full_rate")
+  refSurchargeRub          Decimal   @map("ref_surcharge_rub") @db.Decimal(18, 2)
+  overweightThresholdKg    Int       @map("overweight_threshold_kg")
+  overweightPerTonRub      Decimal   @map("overweight_per_ton_rub") @db.Decimal(18, 2)
+  gensetPerDayRub          Decimal   @map("genset_per_day_rub") @db.Decimal(18, 2)
+  dangerousCargoRub        Decimal   @map("dangerous_cargo_rub") @db.Decimal(18, 2)
+  freeLoadingHours         Int       @map("free_loading_hours")
+  overtimePerHourRub       Decimal   @map("overtime_per_hour_rub") @db.Decimal(18, 2)
+  gensetOvertimePerHourRub Decimal   @map("genset_overtime_per_hour_rub") @db.Decimal(18, 2)
+  customsFreeHours         Int       @map("customs_free_hours")
+  customsPerHourRub        Decimal   @map("customs_per_hour_rub") @db.Decimal(18, 2)
+  customsMaxPerDayRub      Decimal   @map("customs_max_per_day_rub") @db.Decimal(18, 2)
+  roundPartialTonUp        Boolean   @map("round_partial_ton_up")
+  roundPartialHourUp       Boolean   @map("round_partial_hour_up")
+  rateStartDate            DateTime  @map("rate_start_date")
+  rateFinishDate           DateTime? @map("rate_finish_date")
+
+  @@index([rateStartDate, rateFinishDate])
+  @@map("mainline_auto_rules")
+}
