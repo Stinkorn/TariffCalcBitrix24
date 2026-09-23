@@ -22,7 +22,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:push": "npm run prisma:push --workspace @tariffcalc/api",
-    "prisma:seed": "node prisma/seed.cjs"
+    "prisma:seed": "node prisma/seed.cjs",
+    "tariffs:import": "node apps/api/dist/cli/import-tariffs.js"
   },
   "devDependencies": {
     "browserslist": "^4.28.2",
