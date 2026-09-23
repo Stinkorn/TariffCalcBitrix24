@@ -106,7 +106,7 @@ model Location {
   city                 String
   region               String
   country              String             @default("Россия")
-  code                 String?            @unique
+  code                 String             @unique
   tariffLocationId     Int?               @unique @map("location_id")
   territoryGroupId     Int?               @map("territory_group_id")
   isActive             Boolean            @default(true)
