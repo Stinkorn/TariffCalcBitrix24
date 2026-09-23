@@ -14,4 +14,6 @@ Thumbs.db
 apps/*/node_modules/
 apps/*/dist/
 apps/*/.env
-prisma/migrations/
+# Prisma migration history is source-controlled.
+!prisma/migrations/
+!prisma/migrations/**

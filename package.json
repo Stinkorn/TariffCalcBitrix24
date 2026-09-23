@@ -20,6 +20,7 @@
     "typecheck:web": "npm run typecheck --workspace @tariffcalc/web",
     "prisma:validate": "npm run prisma:validate --workspace @tariffcalc/api",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:push": "npm run prisma:push --workspace @tariffcalc/api",
     "prisma:seed": "node prisma/seed.cjs"
   },

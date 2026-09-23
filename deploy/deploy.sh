@@ -19,8 +19,8 @@ npm install
 echo "==> Generate Prisma client"
 npm run prisma:generate
 
-echo "==> Apply Prisma schema with db push"
-npm run prisma:push
+echo "==> Apply Prisma migrations"
+npm run prisma:migrate:deploy
 
 echo "==> Build application"
 npm run build
