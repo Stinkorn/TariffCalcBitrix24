@@ -28,7 +28,7 @@ export function DealCalculatorPage() {
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU').format(new Date()), []);
 
   useEffect(() => {
-    if (dealId || window.top === window.self) return;
+    if (dealId) return;
     void getBitrixPlacementDealId().then((placementDealId) => {
       if (!placementDealId || searchParams.get('dealId')) return;
       const next = new URLSearchParams(searchParams);

@@ -84,15 +84,13 @@ export async function getBitrixBootstrapContext() {
 
 export async function getBitrixPlacementDealId() {
   const sdk = await initializeBitrixSdk();
-  if (!sdk.placement?.info) {
-    return null;
-  }
+  const queryDealId = readPlacementDealIdFromQuery(window.location.search);
+  if (queryDealId) return queryDealId;
+  if (!sdk.placement?.info) return null;
 
   return new Promise<string | null>((resolve) => {
     try {
-      sdk.placement?.info?.((info) => {
-        resolve(readPlacementDealId(info));
-      });
+      sdk.placement?.info?.((info) => resolve(readPlacementDealId(info)));
     } catch {
       resolve(null);
     }
@@ -123,26 +121,41 @@ function readPlacementDealId(info: unknown) {
     return null;
   }
 
-  const placementInfo = info as { options?: unknown };
-  let options = placementInfo.options;
+  const placementInfo = info as { options?: unknown; PLACEMENT_OPTIONS?: unknown; placement_options?: unknown };
+  let options = placementInfo.options ?? placementInfo.PLACEMENT_OPTIONS ?? placementInfo.placement_options;
   if (typeof options === 'string') {
     try {
       options = JSON.parse(options);
     } catch {
-      return null;
+      const params = new URLSearchParams(options as string);
+      options = Object.fromEntries(params.entries());
     }
   }
 
-  if (!options || typeof options !== 'object') {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
     return null;
   }
 
   const raw = options as Record<string, unknown>;
-  const value = raw.ID ?? raw.ENTITY_ID ?? raw.entityId ?? raw.dealId;
+  const value = raw.ID ?? raw.ENTITY_ID ?? raw.entityId ?? raw.dealId ?? raw.DEAL_ID;
   if (typeof value !== 'string' && typeof value !== 'number') {
     return null;
   }
 
   const normalized = String(value).trim();
   return normalized || null;
+}
+
+function readPlacementDealIdFromQuery(search: string) {
+  const params = new URLSearchParams(search);
+  const direct = params.get('dealId') ?? params.get('DEAL_ID') ?? params.get('ID') ?? params.get('ENTITY_ID');
+  if (direct?.trim()) return direct.trim();
+
+  const rawOptions = params.get('PLACEMENT_OPTIONS') ?? params.get('placement_options') ?? params.get('placementOptions');
+  if (!rawOptions) return null;
+  try {
+    return readPlacementDealId({ options: rawOptions });
+  } catch {
+    return null;
+  }
 }
