@@ -16,6 +16,11 @@ type BitrixSdk = {
 declare global {
   interface Window {
     BX24?: BitrixSdk;
+    __BITRIX_PLACEMENT_CONTEXT__?: {
+      PLACEMENT?: unknown;
+      PLACEMENT_OPTIONS?: unknown;
+      DOMAIN?: unknown;
+    };
   }
 }
 
@@ -83,9 +88,12 @@ export async function getBitrixBootstrapContext() {
 }
 
 export async function getBitrixPlacementDealId() {
-  const sdk = await initializeBitrixSdk();
+  const bridgedDealId = readPlacementDealId(window.__BITRIX_PLACEMENT_CONTEXT__?.PLACEMENT_OPTIONS);
+  if (bridgedDealId) return bridgedDealId;
   const queryDealId = readPlacementDealIdFromQuery(window.location.search);
   if (queryDealId) return queryDealId;
+
+  const sdk = await initializeBitrixSdk();
   if (!sdk.placement?.info) return null;
 
   return new Promise<string | null>((resolve) => {
@@ -117,6 +125,12 @@ async function initializeBitrixSdk() {
 }
 
 function readPlacementDealId(info: unknown) {
+  if (info && typeof info === 'object' && !Array.isArray(info) && !('options' in info) && !('PLACEMENT_OPTIONS' in info) && !('placement_options' in info)) {
+    const direct = info as Record<string, unknown>;
+    if ('ID' in direct || 'ENTITY_ID' in direct || 'entityId' in direct || 'dealId' in direct || 'DEAL_ID' in direct) {
+      return readPlacementDealId({ options: info });
+    }
+  }
   if (!info || typeof info !== 'object') {
     return null;
   }

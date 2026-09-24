@@ -188,27 +188,47 @@ export class BitrixController {
   @Get('deal-tab')
   @Public()
   @Header('Content-Type', 'text/html; charset=utf-8')
-  async dealTab() {
-    return this.readWebApplicationDocument();
+  async dealTab(@Query() query: Record<string, unknown>) {
+    return this.readWebApplicationDocument(this.extractPlacementContext(query, query));
   }
 
   @Post('deal-tab')
   @Public()
   @HttpCode(200)
   @Header('Content-Type', 'text/html; charset=utf-8')
-  async dealTabPost() {
-    return this.readWebApplicationDocument();
+  async dealTabPost(@Body() body: Record<string, unknown>, @Query() query: Record<string, unknown>) {
+    return this.readWebApplicationDocument(this.extractPlacementContext(body, query));
   }
 
-  private async readWebApplicationDocument() {
+  private async readWebApplicationDocument(placementContext: Record<string, unknown> = {}) {
     const webDistPath = this.configService.get<string>('WEB_DIST_PATH')
       || DEFAULT_WEB_DIST_PATH;
 
     try {
-      return await readFile(join(webDistPath, 'index.html'), 'utf8');
+      const document = await readFile(join(webDistPath, 'index.html'), 'utf8');
+      const serializedContext = JSON.stringify(placementContext).replace(/</g, '\\u003c');
+      return document.replace('</head>', `<script>window.__BITRIX_PLACEMENT_CONTEXT__=${serializedContext};</script></head>`);
     } catch {
       throw new InternalServerErrorException('Web application document is unavailable');
     }
+  }
+
+  private extractPlacementContext(source: Record<string, unknown>, query: Record<string, unknown>) {
+    const placementOptions =
+      source.PLACEMENT_OPTIONS ??
+      source.placement_options ??
+      source.placementOptions ??
+      query.PLACEMENT_OPTIONS ??
+      query.placement_options ??
+      query.placementOptions ??
+      null;
+    const placement = source.PLACEMENT ?? source.placement ?? query.PLACEMENT ?? query.placement ?? null;
+    const domain = source.DOMAIN ?? source.domain ?? query.DOMAIN ?? query.domain ?? null;
+    return {
+      ...(placement ? { PLACEMENT: placement } : {}),
+      ...(placementOptions ? { PLACEMENT_OPTIONS: placementOptions } : {}),
+      ...(domain ? { DOMAIN: domain } : {})
+    };
   }
   @Post('placement/bind')
   @Roles(UserRoleCode.ADMIN)

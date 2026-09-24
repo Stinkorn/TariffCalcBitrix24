@@ -868,7 +868,9 @@ body { background: #fff; }
 .calculator-page, .calculator-global-nav { font-family: "Manrope", sans-serif; }
 html, body, button, input, select, textarea { font-family: "Manrope", sans-serif; }
 .calculator-form .service-field { display: grid; grid-template-columns: repeat(3, max-content); grid-template-rows: var(--field-label-height) var(--field-control-height); align-items: start; align-content: start; row-gap: var(--field-gap); }
-.calculator-form .service-field > label { display: inline-flex; align-items: center; gap: 8px; min-height: var(--field-control-height); margin: 0; white-space: nowrap; }
-.calculator-form .service-field > label input { flex: 0 0 auto; margin: 0; }
+.calculator-form .service-field { grid-template-columns: 1fr; grid-template-rows: var(--field-label-height) var(--field-control-height); }
+.calculator-form .service-options { display: flex; align-items: center; gap: 22px; flex-wrap: nowrap; min-width: 0; }
+.calculator-form .service-options > label { display: inline-flex; align-items: center; gap: 8px; min-height: var(--field-control-height); margin: 0; white-space: nowrap; }
+.calculator-form .service-options > label input { flex: 0 0 17px; width: 17px; height: 17px; margin: 0; }
 .calculator-form .owner-field .radio-option { align-items: center; }
 .calculator-form .delay-field > span:not(.required) { display: flex; align-items: center; margin-top: 0; }
