@@ -8,6 +8,8 @@ export type RouteStage = {
   from: string;
   to: string;
   details: string;
+  status: string;
+  amount: string;
 };
 
 export type BreakdownLine = { label: string; value: string; emphasis?: boolean };

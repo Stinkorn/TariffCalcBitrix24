@@ -1,15 +1,15 @@
 import type { CalculationQuote, CalculatorCategory } from '../types';
 
 const commonStages = (category: CalculatorCategory) => [
-  { number: 1, mode: 'Авто • первая миля', title: 'Калининград → Балтийск', from: 'Калининград', to: 'Балтийск', details: `71 км • 27 200 кг • ${category}` },
-  { number: 2, mode: 'Море • LI-LO', title: 'Балтийск → Бронка', from: 'Балтийск', to: 'Бронка', details: `${category === 'DRY' ? "40'HC" : "40'RCPW"} • COC • LOADED` },
-  { number: 3, mode: 'Авто • последняя миля', title: 'Бронка → Москва', from: 'Бронка', to: 'Москва', details: 'магистральное авто • 27 200 кг' }
+  { number: 1, mode: 'Авто • первая миля', title: 'Калининград → Балтийск', from: 'Калининград', to: 'Балтийск', details: `71 км • 27 200 кг • ${category}`, status: 'Тариф найден', amount: category === 'DRY' ? '18 500 ₽' : '10 065 ₽' },
+  { number: 2, mode: 'Море • LI-LO', title: 'Балтийск → Бронка', from: 'Балтийск', to: 'Бронка', details: `${category === 'DRY' ? "40'HC" : "40'RCPW"} • COC • LOADED`, status: 'Тариф найден', amount: category === 'DRY' ? '114 000 ₽' : '130 000 ₽' },
+  { number: 3, mode: 'Авто • последняя миля', title: 'Бронка → Москва', from: 'Бронка', to: 'Москва', details: 'магистральное авто • 27 200 кг', status: 'Тариф найден', amount: '93 197 ₽' }
 ];
 
 const dry: CalculationQuote = {
   category: 'DRY', baseDoorToDoor: 225697, routeStages: commonStages('DRY'),
   additionalServices: [{ name: 'Идентификация', active: true }, { name: 'Опасный груз', active: false }],
-  explanation: { distance: ['Первая миля', '70,2 км', '→ округление вверх', '→ 71 км'], weight: ['Вес 27 200 кг', '→ перевес 2 начатые тонны'], base: ['База 17 000 ₽', '+ перевес 1 500 ₽'] },
+  explanation: { distance: ['Первая миля', '70,2 км → округление вверх → 71 км'], weight: ['Вес 27 200 кг → перевес 2 начатые тонны'], base: ['База 17 000 ₽ + перевес 1 500 ₽'] },
   commercial: { forwardingMargin: '4 574 ₽', forwardingMarginPercent: '2,2 %', servicesMargin: '25 905 ₽', totalMargin: '30 479 ₽', totalMarginPercent: '14,5 %' },
   breakdown: [
     { label: 'Базовый тариф LI-LO', value: '114 000 ₽' }, { label: 'ПРР в порту отправки', value: '16 729 ₽' },
@@ -23,7 +23,7 @@ const dry: CalculationQuote = {
 };
 
 const ref: CalculationQuote = {
-  category: 'REF', baseDoorToDoor: 248545, routeStages: commonStages('REF'),
+  category: 'REF', baseDoorToDoor: 235349.17, routeStages: commonStages('REF'),
   additionalServices: [{ name: 'Идентификация', active: true }, { name: 'Дженсет', active: false }, { name: 'Опасный груз', active: false }],
   explanation: dry.explanation,
   commercial: { forwardingMargin: '—', forwardingMarginPercent: '—', servicesMargin: '22 839,30 ₽', totalMargin: '—', totalMarginPercent: '—' },
