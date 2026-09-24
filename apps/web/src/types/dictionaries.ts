@@ -7,6 +7,9 @@ export type LocationItem = {
   label: string;
 };
 
+export type CargoItem = { id: string; name: string; etsng: string | null; label: string };
+export type ContainerItem = { id: string; type: string; category: 'DRY' | 'REF' };
+
 export type DictionaryBootstrap = {
   routeTypes: string[];
   transportTypes: string[];

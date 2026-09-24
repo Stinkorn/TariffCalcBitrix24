@@ -885,3 +885,71 @@ html, body, button, input, select, textarea { font-family: "Manrope", sans-serif
   .calculator-form .owner-field { grid-template-columns: 1fr; row-gap: var(--field-gap); }
   .calculator-form .owner-field .radio-option { grid-column: 1; }
 }
+
+/* Directory controls share the same field geometry as native calculator inputs. */
+.calculator-form .directory-autocomplete-label {
+  position: relative;
+  min-width: 0;
+}
+.calculator-form .directory-autocomplete {
+  position: relative;
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.calculator-form .directory-autocomplete > input {
+  display: block;
+  width: 100%;
+  height: var(--field-control-height);
+  margin-top: 0;
+}
+.calculator-form .directory-autocomplete-label > .calculator-error {
+  display: block;
+  margin-top: 5px;
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+.directory-autocomplete-dropdown {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 252px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+  border: 1px solid #d1ddea;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(12, 42, 97, .14);
+}
+.directory-autocomplete-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0c2a61;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: left;
+  white-space: normal;
+}
+.directory-autocomplete-dropdown button:hover,
+.directory-autocomplete-dropdown button.is-active {
+  background: #edf6ff;
+  color: #0a579a;
+}
+.directory-autocomplete-state {
+  padding: 10px 11px;
+  color: #8295ae;
+  font-size: 12px;
+}
+.directory-autocomplete-state.is-error { color: #d85c3c; }
+.calculator-form .container-select {
+  appearance: none;
+  background-image: none;
+}

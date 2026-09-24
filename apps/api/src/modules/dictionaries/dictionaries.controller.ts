@@ -18,8 +18,18 @@ export class DictionariesController {
   }
 
   @Get('locations')
-  getLocations(@Query('search') search?: string) {
-    return this.dictionariesService.getLocations(search);
+  getLocations(@Query('search') search?: string, @Query('limit') limit?: string) {
+    return this.dictionariesService.getLocations(search, limit);
+  }
+
+  @Get('cargo')
+  getCargo(@Query('search') search?: string) {
+    return this.dictionariesService.getCargo(search);
+  }
+
+  @Get('containers')
+  getContainers(@Query('category') category?: string) {
+    return this.dictionariesService.getContainers(category);
   }
 
   @Post('locations')

@@ -32,9 +32,13 @@ export type CalculationQuote = {
 
 export type CalculatorFormState = {
   origin: string;
+  originLocationId: string | null;
   destination: string;
+  destinationLocationId: string | null;
   container: string;
+  containerId: string | null;
   cargo: string;
+  cargoId: string | null;
   weightKg: string;
   owner: ContainerOwner | '';
   identification: boolean;

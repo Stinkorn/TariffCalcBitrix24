@@ -6,7 +6,7 @@ import {
   Logger
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, type Location } from '@prisma/client';
+import { ContainerCategory, Prisma, type Location } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BitrixPlacementService } from '../bitrix/bitrix-placement.service';
 import { BitrixRestClient } from '../bitrix/bitrix-rest.client';
@@ -154,16 +154,32 @@ export class DictionariesService {
   ) {}
 
   async getBootstrap() {
-    const locations = await this.listLocations();
     return {
       ...DEFAULT_DICTIONARIES,
-      locations
+      locations: []
     };
   }
 
-  async getLocations(search?: string) {
-    const items = await this.listLocations(search);
+  async getLocations(search?: string, limit?: string) {
+    const items = await this.listLocations(search, limit);
     return { items };
+  }
+
+  async getCargo(search?: string) {
+    const query = search?.trim();
+    const items = await this.prisma.cargo.findMany({
+      where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { etsng: { contains: query, mode: 'insensitive' } }] } : undefined,
+      orderBy: [{ name: 'asc' }, { etsng: 'asc' }],
+      take: 20
+    });
+    return { items: items.map((item) => ({ id: String(item.id), name: item.name, etsng: item.etsng, label: item.etsng ? `${item.etsng} — ${item.name}` : item.name })) };
+  }
+
+  async getContainers(category?: string) {
+    const normalized = category?.trim().toUpperCase();
+    const where = normalized === 'DRY' || normalized === 'REF' ? { category: normalized as ContainerCategory } : undefined;
+    const items = await this.prisma.container.findMany({ where, orderBy: [{ type: 'asc' }, { size: 'asc' }] });
+    return { items: items.map((item) => ({ id: String(item.id), type: item.type, category: item.category })) };
   }
 
   async createLocation(input: { city?: string; region?: string }) {
@@ -401,24 +417,27 @@ export class DictionariesService {
     };
   }
 
-  private async listLocations(search?: string) {
+  private async listLocations(search?: string, requestedLimit?: string) {
     const trimmedSearch = search?.trim();
-    const isSearch = Boolean(trimmedSearch);
-    const limit = isSearch ? 50 : 200;
+    const parsedLimit = requestedLimit ? Number.parseInt(requestedLimit, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 20) : 20;
     const where: Prisma.LocationWhereInput = {
-      isActive: true
+      isActive: true,
+      tariffLocationId: { not: null },
+      distances: { some: {} }
     };
 
     if (trimmedSearch) {
       where.OR = [
         { city: { contains: trimmedSearch, mode: 'insensitive' } },
-        { region: { contains: trimmedSearch, mode: 'insensitive' } }
+        { region: { contains: trimmedSearch, mode: 'insensitive' } },
+        { country: { contains: trimmedSearch, mode: 'insensitive' } }
       ];
     }
 
     const items = await this.prisma.location.findMany({
       where,
-      orderBy: [{ sortOrder: 'asc' }, { city: 'asc' }],
+      orderBy: [{ city: 'asc' }, { region: 'asc' }, { country: 'asc' }],
       take: limit
     });
 
@@ -432,11 +451,7 @@ export class DictionariesService {
       city: item.city,
       region: item.region,
       country: item.country,
-      isActive: item.isActive,
-      sortOrder: item.sortOrder,
-      source: item.source,
-      bitrixElementId: item.bitrixElementId,
-      label: `${item.city}, ${item.region}`
+      label: `${item.city}, ${item.region}, ${item.country.toUpperCase()}`
     };
   }
 
