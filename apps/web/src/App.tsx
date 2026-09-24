@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { DictionariesProvider } from './context/DictionariesContext';
 import { DealCalculatorPage } from './pages/DealCalculatorPage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -7,6 +7,7 @@ import { useAuth } from './context/AuthContext';
 
 export function App() {
   const { status, user, retryAuthentication } = useAuth();
+  const [searchParams] = useSearchParams();
 
   if (status === 'loading') {
     return <main className="page"><section className="shell"><p>Проверка доступа…</p></section></main>;
@@ -26,11 +27,15 @@ export function App() {
 
   return (
     <DictionariesProvider>
-      <nav className="app-nav" aria-label="TariffCalc">
+      <nav className="app-nav calculator-global-nav" aria-label="TariffCalc">
+        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-name">НОВИК<small>TARIFF CALC</small></span>
         <NavLink to="/calculator">Калькулятор</NavLink>
         <NavLink to="/history">История</NavLink>
         <NavLink to="/tariffs">Тарифы</NavLink>
-        <span className="muted">{user?.role}</span>
+        <span className="nav-spacer" />
+        <span className="deal-badge">{searchParams.get('dealId') ? `Сделка #${searchParams.get('dealId')}` : 'Сделка'}</span>
+        <span className="muted nav-user">{user?.role || 'USER'}</span>
       </nav>
       <Routes>
         <Route path="/calculator" element={<DealCalculatorPage />} />
