@@ -874,3 +874,14 @@ html, body, button, input, select, textarea { font-family: "Manrope", sans-serif
 .calculator-form .service-options > label input { flex: 0 0 17px; width: 17px; height: 17px; margin: 0; }
 .calculator-form .owner-field .radio-option { align-items: center; }
 .calculator-form .delay-field > span:not(.required) { display: flex; align-items: center; margin-top: 0; }
+.calculator-form .owner-field { display: grid; grid-template-columns: max-content max-content; column-gap: 32px; row-gap: var(--field-gap); align-content: start; }
+.calculator-form .owner-field legend { grid-column: 1 / -1; margin: 0; }
+.calculator-form .owner-field .radio-option { display: inline-flex !important; align-items: center; width: max-content; margin: 0; gap: 10px; }
+.calculator-form .owner-field .radio-option > span { display: grid; min-width: max-content; gap: 5px; }
+.calculator-form .owner-field .radio-option strong { white-space: nowrap; }
+.calculator-form .owner-field .radio-option input { flex: 0 0 auto; width: 17px; height: 17px; margin: 0; }
+.calculator-form .owner-field > .calculator-error { grid-column: 1 / -1; }
+@media (max-width: 560px) {
+  .calculator-form .owner-field { grid-template-columns: 1fr; row-gap: var(--field-gap); }
+  .calculator-form .owner-field .radio-option { grid-column: 1; }
+}

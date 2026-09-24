@@ -125,24 +125,14 @@ async function initializeBitrixSdk() {
 }
 
 function readPlacementDealId(info: unknown) {
-  if (info && typeof info === 'object' && !Array.isArray(info) && !('options' in info) && !('PLACEMENT_OPTIONS' in info) && !('placement_options' in info)) {
-    const direct = info as Record<string, unknown>;
-    if ('ID' in direct || 'ENTITY_ID' in direct || 'entityId' in direct || 'dealId' in direct || 'DEAL_ID' in direct) {
-      return readPlacementDealId({ options: info });
-    }
-  }
-  if (!info || typeof info !== 'object') {
-    return null;
-  }
-
-  const placementInfo = info as { options?: unknown; PLACEMENT_OPTIONS?: unknown; placement_options?: unknown };
-  let options = placementInfo.options ?? placementInfo.PLACEMENT_OPTIONS ?? placementInfo.placement_options;
+  let options = info;
   if (typeof options === 'string') {
-    try {
-      options = JSON.parse(options);
-    } catch {
-      const params = new URLSearchParams(options as string);
-      options = Object.fromEntries(params.entries());
+    options = parsePlacementOptionsString(options);
+  } else if (options && typeof options === 'object' && !Array.isArray(options)) {
+    const wrapper = options as { options?: unknown; PLACEMENT_OPTIONS?: unknown; placement_options?: unknown };
+    options = wrapper.options ?? wrapper.PLACEMENT_OPTIONS ?? wrapper.placement_options ?? options;
+    if (typeof options === 'string') {
+      options = parsePlacementOptionsString(options);
     }
   }
 
@@ -158,6 +148,14 @@ function readPlacementDealId(info: unknown) {
 
   const normalized = String(value).trim();
   return normalized || null;
+}
+
+function parsePlacementOptionsString(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return Object.fromEntries(new URLSearchParams(value).entries());
+  }
 }
 
 function readPlacementDealIdFromQuery(search: string) {
