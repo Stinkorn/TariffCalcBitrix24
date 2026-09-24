@@ -783,7 +783,7 @@ body { background: #fff; }
 @media (max-width: 700px) { .commercial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stage-card { align-items: flex-start; }.stage-result { min-width: 92px; }.explanation span { white-space: normal; } }
 
 /* Shared calculator-form geometry for DRY and REF. */
-.calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-gap: 9px; }
+.calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-label-gap: 12px; --field-gap: var(--field-label-gap); }
 .form-row-route > label,
 .form-row-cargo > label {
   display: grid;
@@ -952,4 +952,31 @@ html, body, button, input, select, textarea { font-family: "Manrope", sans-serif
 .calculator-form .container-select {
   appearance: none;
   background-image: none;
+}
+
+/* Keep native and autocomplete fields on one shared baseline. */
+.calculator-form .form-row-cargo > label {
+  grid-template-rows: var(--field-label-height) var(--field-control-height) auto;
+  row-gap: var(--field-label-gap);
+  align-items: start;
+  line-height: var(--field-label-height);
+}
+.calculator-form .form-row-cargo > label > .directory-autocomplete,
+.calculator-form .form-row-cargo > label > select,
+.calculator-form .form-row-cargo > label > input {
+  grid-row: 2;
+  margin-top: 0;
+}
+.calculator-form .form-row-cargo > label > .directory-autocomplete {
+  align-self: start;
+}
+.calculator-form .owner-field legend,
+.calculator-form .service-field legend,
+.calculator-form .delay-field {
+  margin-bottom: var(--field-label-gap);
+}
+.calculator-form .owner-field,
+.calculator-form .service-field,
+.calculator-form .delay-field {
+  row-gap: var(--field-label-gap);
 }

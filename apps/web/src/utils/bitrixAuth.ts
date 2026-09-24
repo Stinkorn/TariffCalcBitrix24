@@ -20,6 +20,7 @@ declare global {
       PLACEMENT?: unknown;
       PLACEMENT_OPTIONS?: unknown;
       DOMAIN?: unknown;
+      domain?: unknown;
     };
   }
 }
@@ -88,7 +89,8 @@ export async function getBitrixBootstrapContext() {
 }
 
 export async function getBitrixPlacementDealId() {
-  const bridgedDealId = readPlacementDealId(window.__BITRIX_PLACEMENT_CONTEXT__?.PLACEMENT_OPTIONS);
+  const placementContext = window.__BITRIX_PLACEMENT_CONTEXT__;
+  const bridgedDealId = readPlacementDealId(placementContext?.PLACEMENT_OPTIONS ?? placementContext);
   if (bridgedDealId) return bridgedDealId;
   const queryDealId = readPlacementDealIdFromQuery(window.location.search);
   if (queryDealId) return queryDealId;
@@ -103,6 +105,15 @@ export async function getBitrixPlacementDealId() {
       resolve(null);
     }
   });
+}
+
+export function getBitrixPlacementDomain() {
+  const context = window.__BITRIX_PLACEMENT_CONTEXT__;
+  const contextDomain = context?.DOMAIN ?? context?.domain;
+  const directDomain = readRequiredString(contextDomain);
+  if (directDomain) return directDomain;
+  const params = new URLSearchParams(window.location.search);
+  return readRequiredString(params.get('portal') ?? params.get('domain'));
 }
 
 async function initializeBitrixSdk() {

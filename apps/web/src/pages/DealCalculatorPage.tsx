@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getBitrixPlacementDealId } from '../utils/bitrixAuth';
+import { getBitrixPlacementDealId, getBitrixPlacementDomain } from '../utils/bitrixAuth';
 import { sendResizeToBitrix } from '../utils/bitrixResize';
 import { ContainerModeSwitch } from '../features/calculator/components/ContainerModeSwitch';
 import { CalculatorForm } from '../features/calculator/components/CalculatorForm';
@@ -26,7 +26,7 @@ export function DealCalculatorPage() {
   const savedCalculationRef = useRef<string | null>(null);
   const calculationVersionRef = useRef(0);
   const dealId = searchParams.get('dealId') ?? '';
-  const portalDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? '';
+  const portalDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? getBitrixPlacementDomain() ?? '';
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU').format(new Date()), []);
 
   useEffect(() => {

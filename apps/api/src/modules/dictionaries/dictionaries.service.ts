@@ -167,12 +167,16 @@ export class DictionariesService {
 
   async getCargo(search?: string) {
     const query = search?.trim();
-    const items = await this.prisma.cargo.findMany({
+    const [exactEtsng, items] = await Promise.all([
+      query ? this.prisma.cargo.findMany({ where: { etsng: { equals: query, mode: 'insensitive' } }, orderBy: [{ name: 'asc' }], take: 1 }) : Promise.resolve([]),
+      this.prisma.cargo.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { etsng: { contains: query, mode: 'insensitive' } }] } : undefined,
       orderBy: [{ name: 'asc' }, { etsng: 'asc' }],
       take: 20
-    });
-    return { items: items.map((item) => ({ id: String(item.id), name: item.name, etsng: item.etsng, label: item.etsng ? `${item.etsng} — ${item.name}` : item.name })) };
+      })
+    ]);
+    const ranked = [...exactEtsng, ...items.filter((item) => !exactEtsng.some((exact) => exact.id === item.id))];
+    return { items: ranked.slice(0, 20).map((item) => ({ id: String(item.id), name: item.name, etsng: item.etsng, label: item.etsng ? `${item.etsng} — ${item.name}` : item.name })) };
   }
 
   async getContainers(category?: string) {
