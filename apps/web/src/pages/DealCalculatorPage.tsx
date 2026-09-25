@@ -6,7 +6,7 @@ import { sendResizeToBitrix } from '../utils/bitrixResize';
 import { ContainerModeSwitch } from '../features/calculator/components/ContainerModeSwitch';
 import { CalculatorForm } from '../features/calculator/components/CalculatorForm';
 import { CommercialRatePanel } from '../features/calculator/components/CommercialRatePanel';
-import { AdditionalServices, CalculationBreakdown, CalculationExplanation, RouteStages } from '../features/calculator/components/ResultPanels';
+import { AdditionalServices, CalculationBreakdown, RouteStages } from '../features/calculator/components/ResultPanels';
 import { validateCalculatorForm } from '../features/calculator/utils';
 import { findExact, loadCargo, loadLocations } from '../features/calculator/directoryData';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
@@ -132,6 +132,6 @@ export function DealCalculatorPage() {
   return <main className="calculator-page"><div className="calculator-shell">
     <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
     <section className="calculator-card"><ContainerModeSwitch category={category} onChange={changeCategory} /><CalculatorForm category={category} form={form} errors={errors} onChange={updateForm} onSubmit={() => void calculate()} />{calculationError && <p className="calculator-error">{calculationError}</p>}</section>
-    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /><CalculationExplanation quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
+    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
   </div></main>;
 }
