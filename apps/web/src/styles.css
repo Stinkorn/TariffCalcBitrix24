@@ -918,6 +918,8 @@ html, body, button, input, select, textarea { font-family: "Manrope", sans-serif
   max-height: 252px;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 4px;
   border: 1px solid #d1ddea;
   border-radius: 9px;

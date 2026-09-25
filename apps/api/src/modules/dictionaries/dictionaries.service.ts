@@ -172,11 +172,10 @@ export class DictionariesService {
       this.prisma.cargo.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: 'insensitive' } }, { etsng: { contains: query, mode: 'insensitive' } }] } : undefined,
       orderBy: [{ name: 'asc' }, { etsng: 'asc' }],
-      take: 20
       })
     ]);
     const ranked = [...exactEtsng, ...items.filter((item) => !exactEtsng.some((exact) => exact.id === item.id))];
-    return { items: ranked.slice(0, 20).map((item) => ({ id: String(item.id), name: item.name, etsng: item.etsng, label: item.etsng ? `${item.etsng} — ${item.name}` : item.name })) };
+    return { items: ranked.map((item) => ({ id: String(item.id), name: item.name, etsng: item.etsng, label: item.etsng ? `${item.etsng} — ${item.name}` : item.name })) };
   }
 
   async getContainers(category?: string) {
@@ -424,7 +423,7 @@ export class DictionariesService {
   private async listLocations(search?: string, requestedLimit?: string) {
     const trimmedSearch = search?.trim();
     const parsedLimit = requestedLimit ? Number.parseInt(requestedLimit, 10) : NaN;
-    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 20) : 20;
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 1000) : undefined;
     const where: Prisma.LocationWhereInput = {
       isActive: true,
       tariffLocationId: { not: null },
@@ -442,7 +441,7 @@ export class DictionariesService {
     const items = await this.prisma.location.findMany({
       where,
       orderBy: [{ city: 'asc' }, { region: 'asc' }, { country: 'asc' }],
-      take: limit
+      ...(limit ? { take: limit } : {})
     });
 
     return items.map((item) => this.toLocationDto(item));

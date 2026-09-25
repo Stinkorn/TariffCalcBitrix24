@@ -392,7 +392,7 @@ export class BitrixPlacementService {
 
       const deal = dealResponse?.result ?? {};
       const companyId = this.readEntityId(deal.COMPANY_ID);
-      const contactId = this.readEntityId(deal.CONTACT_ID);
+      const contactId = this.readEntityId(deal.CONTACT_ID) ?? this.readEntityId(this.readFirstArrayValue(deal.CONTACT_IDS));
       const title = this.readString(deal.TITLE) ?? null;
 
       if (companyId) {
@@ -1160,8 +1160,12 @@ export class BitrixPlacementService {
   }
 
   private readEntityId(value: unknown) {
-    const raw = this.readString(value);
+    const raw = this.readScalarString(value);
     return raw && raw !== '0' ? raw : null;
+  }
+
+  private readFirstArrayValue(value: unknown) {
+    return Array.isArray(value) ? value[0] : value;
   }
 
   private buildContactName(contact: Record<string, unknown>) {

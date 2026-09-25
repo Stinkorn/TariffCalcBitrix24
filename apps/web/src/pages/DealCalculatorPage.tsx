@@ -9,6 +9,7 @@ import { CommercialRatePanel } from '../features/calculator/components/Commercia
 import { AdditionalServices, CalculationBreakdown, CalculationExplanation, RouteStages } from '../features/calculator/components/ResultPanels';
 import { calculatorFixtures } from '../features/calculator/fixtures/calculatorFixtures';
 import { validateCalculatorForm } from '../features/calculator/utils';
+import { findExact, loadCargo, loadLocations } from '../features/calculator/directoryData';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
 
 type Counterparty = { name?: string | null };
@@ -43,8 +44,15 @@ export function DealCalculatorPage() {
     if (!dealId) return;
     const query = portalDomain ? `?portalDomain=${encodeURIComponent(portalDomain)}` : '';
     void apiFetch(`/bitrix/deals/${encodeURIComponent(dealId)}/counterparty${query}`).then(async (response) => {
-      if (response.ok) setCounterparty(await response.json() as Counterparty);
-    }).catch(() => undefined);
+      if (!response.ok) {
+        const safeMessage = await response.clone().json().then((body: unknown) => body && typeof body === 'object' && 'message' in body && typeof body.message === 'string' ? body.message : response.statusText).catch(() => response.statusText);
+        console.warn(`[counterparty] HTTP ${response.status} for deal ${dealId}: ${safeMessage || 'request failed'}`);
+        return;
+      }
+      const data = await response.json() as Counterparty;
+      if (!data.name) console.warn(`[counterparty] Bitrix returned no name for deal ${dealId}`);
+      setCounterparty(data);
+    }).catch((error) => console.warn('[counterparty] request failed', error instanceof Error ? error.message : 'unknown error'));
   }, [apiFetch, dealId, portalDomain]);
 
   useEffect(() => {
@@ -56,25 +64,10 @@ export function DealCalculatorPage() {
       const origin = data.origin?.trim() || '';
       const destination = data.destination?.trim() || '';
       const cargo = data.cargoName?.trim() || '';
-      const [originResponse, destinationResponse, cargoResponse] = await Promise.all([
-        origin ? apiFetch(`/dictionaries/locations?search=${encodeURIComponent(origin)}&limit=7`) : Promise.resolve(null),
-        destination ? apiFetch(`/dictionaries/locations?search=${encodeURIComponent(destination)}&limit=7`) : Promise.resolve(null),
-        cargo ? apiFetch(`/dictionaries/cargo?search=${encodeURIComponent(cargo)}`) : Promise.resolve(null)
-      ]);
-      type PrefillDirectoryItem = { id: string; label?: string; city?: string; name?: string; etsng?: string };
-      const normalize = (value: string | undefined) => value?.trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/\s+/g, ' ') ?? '';
-      const readExact = async (result: Response | null, value: string, fields: Array<keyof PrefillDirectoryItem>) => {
-        if (!result?.ok) return null;
-        const payload = await result.json() as { items?: PrefillDirectoryItem[] };
-        const expected = normalize(value);
-        const exact = (payload.items ?? []).filter((item) => fields.some((field) => normalize(String(item[field] ?? '')) === expected));
-        return exact.length === 1 ? exact[0] : null;
-      };
-      const [originItem, destinationItem, cargoItem] = await Promise.all([
-        readExact(originResponse, origin, ['city', 'label']),
-        readExact(destinationResponse, destination, ['city', 'label']),
-        readExact(cargoResponse, cargo, ['name', 'etsng', 'label'])
-      ]);
+      const [locations, cargoItems] = await Promise.all([loadLocations(apiFetch), loadCargo(apiFetch)]);
+      const originItem = origin ? findExact(locations, origin, ['city', 'label']) : null;
+      const destinationItem = destination ? findExact(locations, destination, ['city', 'label']) : null;
+      const cargoItem = cargo ? findExact(cargoItems, cargo, ['name', 'etsng', 'label']) : null;
       setForm((current) => ({
         ...current,
         origin: current.origin || origin,
