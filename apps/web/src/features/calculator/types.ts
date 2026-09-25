@@ -10,15 +10,17 @@ export type RouteStage = {
   details: string;
   status: string;
   amount: string;
+  amountValue?: number;
+  source?: Record<string, unknown>;
 };
 
 export type BreakdownLine = { label: string; value: string; emphasis?: boolean };
 
 export type CalculationQuote = {
   category: CalculatorCategory;
-  baseDoorToDoor: number;
+  baseDoorToDoor: number | null;
   routeStages: RouteStage[];
-  additionalServices: Array<{ name: string; active: boolean }>;
+  additionalServices: Array<{ name: string; active: boolean; amountValue?: number; priced?: boolean }>;
   explanation: { distance: string[]; weight: string[]; base: string[] };
   commercial: {
     forwardingMargin: string;
@@ -28,6 +30,25 @@ export type CalculationQuote = {
     totalMarginPercent: string;
   };
   breakdown: BreakdownLine[];
+  warnings?: string[];
+  costs?: {
+    firstMile: number | null;
+    liLo: number | null;
+    portHandlingOrigin: number | null;
+    fios: number | null;
+    portHandlingDestination: number | null;
+    connectionOrigin: number | null;
+    connectionDestination: number | null;
+    containerUsage: number | null;
+    containerStorage: number | null;
+    additionalServices: number | null;
+    lastMile: number | null;
+    eaeuConfirmation: number | null;
+    moneyCost: number | null;
+    otherExpenses: number | null;
+    paymentDelay: number | null;
+    total: number | null;
+  };
 };
 
 export type CalculatorFormState = {

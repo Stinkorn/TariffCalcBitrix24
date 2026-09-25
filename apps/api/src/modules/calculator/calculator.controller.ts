@@ -3,6 +3,7 @@ import { CalculatorService } from './calculator.service';
 import { CalculateDto } from './dto/calculate.dto';
 import { FindTariffDto } from './dto/find-tariff.dto';
 import { TariffCalculatorService } from '../tariffs/tariff-calculator.service';
+import { CreateQuoteDto } from './dto/create-quote.dto';
 
 @Controller('calculator')
 export class CalculatorController {
@@ -19,5 +20,10 @@ export class CalculatorController {
   @Post('find-tariff')
   findTariff(@Body() payload: FindTariffDto) {
     return this.tariffCalculatorService.findTariff(payload);
+  }
+
+  @Post('quote')
+  quote(@Body() payload: CreateQuoteDto) {
+    return this.calculatorService.quote(payload);
   }
 }
