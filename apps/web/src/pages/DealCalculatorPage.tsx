@@ -108,7 +108,7 @@ export function DealCalculatorPage() {
   function newCalculation() { void saveCurrentCalculation().catch(() => { savedCalculationRef.current = null; }); setForm(initialForm); setCategory('DRY'); setQuote(null); setSaleRate(''); setErrors({}); }
 
   return <main className="calculator-page"><div className="calculator-shell">
-    <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong><span>•</span><small>данные из Bitrix24</small></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
+    <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
     <section className="calculator-card"><ContainerModeSwitch category={category} onChange={changeCategory} /><CalculatorForm category={category} form={form} errors={errors} onChange={updateForm} onSubmit={calculate} /></section>
     {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={setSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /><CalculationExplanation quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
   </div></main>;

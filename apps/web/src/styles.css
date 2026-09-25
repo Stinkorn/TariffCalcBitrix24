@@ -783,7 +783,7 @@ body { background: #fff; }
 @media (max-width: 700px) { .commercial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stage-card { align-items: flex-start; }.stage-result { min-width: 92px; }.explanation span { white-space: normal; } }
 
 /* Shared calculator-form geometry for DRY and REF. */
-.calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-label-gap: 12px; --field-gap: var(--field-label-gap); }
+.calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-label-gap: 16px; --field-gap: var(--field-label-gap); }
 .form-row-route > label,
 .form-row-cargo > label {
   display: grid;
