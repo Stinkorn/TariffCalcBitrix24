@@ -18,6 +18,7 @@ export type BreakdownLine = { label: string; value: string; emphasis?: boolean }
 
 export type CalculationQuote = {
   category: CalculatorCategory;
+  direction?: 'KLD_OUT' | 'KLD_IN';
   baseDoorToDoor: number | null;
   routeStages: RouteStage[];
   additionalServices: Array<{ name: string; active: boolean; amountValue?: number; priced?: boolean }>;
