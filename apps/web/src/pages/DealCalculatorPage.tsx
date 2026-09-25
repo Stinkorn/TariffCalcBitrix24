@@ -26,6 +26,7 @@ export function DealCalculatorPage() {
   const [counterparty, setCounterparty] = useState<Counterparty | null>(null);
   const savedCalculationRef = useRef<string | null>(null);
   const calculationVersionRef = useRef(0);
+  const saleRateRecalcRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dealId = searchParams.get('dealId') ?? '';
   const portalDomain = searchParams.get('portal') ?? searchParams.get('domain') ?? getBitrixPlacementDomain() ?? '';
   const today = useMemo(() => new Intl.DateTimeFormat('ru-RU').format(new Date()), []);
@@ -84,16 +85,27 @@ export function DealCalculatorPage() {
 
   function updateForm(patch: Partial<CalculatorFormState>) { setForm((current) => ({ ...current, ...patch })); setQuote(null); setCalculationError(''); savedCalculationRef.current = null; setErrors((current) => { const next = { ...current }; Object.keys(patch).forEach((key) => { delete next[key as keyof CalculatorFormState]; }); return next; }); }
   function changeCategory(next: CalculatorCategory) { setCategory(next); setQuote(null); setSaleRate(''); setErrors({}); setForm((current) => ({ ...current, container: '', containerId: null, genset: next === 'REF' ? current.genset : false })); }
+  async function requestQuote(nextSaleRate: string) {
+    const response = await apiFetch('/calculator/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, originLocationId: form.originLocationId, destinationLocationId: form.destinationLocationId, containerId: Number(form.containerId), cargoId: form.cargoId ? Number(form.cargoId) : null, weightKg: Number(form.weightKg.replace(/\s/g, '')), owner: form.owner, services: { identification: form.identification, genset: form.genset, dangerous: form.dangerous }, paymentDelayDays: Number(form.paymentDelay), saleRate: nextSaleRate ? Number(nextSaleRate) : null }) });
+    if (!response.ok) { const data = await response.json().catch(() => null) as { message?: string } | null; throw new Error(data?.message || `Не удалось рассчитать маршрут (HTTP ${response.status})`); }
+    calculationVersionRef.current += 1;
+    setQuote(await response.json() as CalculationQuote);
+    savedCalculationRef.current = null;
+  }
   async function calculate() {
     const nextErrors = validateCalculatorForm(form); setErrors(nextErrors); setCalculationError('');
     if (Object.keys(nextErrors).length || !form.originLocationId || !form.destinationLocationId || !form.containerId || !form.weightKg) return;
     try {
-      const response = await apiFetch('/calculator/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, originLocationId: form.originLocationId, destinationLocationId: form.destinationLocationId, containerId: Number(form.containerId), cargoId: form.cargoId ? Number(form.cargoId) : null, weightKg: Number(form.weightKg.replace(/\s/g, '')), owner: form.owner, services: { identification: form.identification, genset: form.genset, dangerous: form.dangerous }, paymentDelayDays: Number(form.paymentDelay), saleRate: saleRate ? Number(saleRate) : null }) });
-      if (!response.ok) { const data = await response.json().catch(() => null) as { message?: string } | null; setCalculationError(data?.message || `Не удалось рассчитать маршрут (HTTP ${response.status})`); return; }
-      calculationVersionRef.current += 1; setQuote(await response.json() as CalculationQuote); savedCalculationRef.current = null;
+      await requestQuote(saleRate);
     } catch (error) {
       setCalculationError(error instanceof Error ? error.message : 'Не удалось рассчитать маршрут');
     }
+  }
+  function changeSaleRate(nextValue: string) {
+    setSaleRate(nextValue);
+    if (!quote || !form.originLocationId || !form.destinationLocationId || !form.containerId || !form.weightKg) return;
+    if (saleRateRecalcRef.current) clearTimeout(saleRateRecalcRef.current);
+    saleRateRecalcRef.current = setTimeout(() => { void requestQuote(nextValue).catch((error) => setCalculationError(error instanceof Error ? error.message : 'Не удалось пересчитать коммерческую ставку')); }, 300);
   }
   async function saveCurrentCalculation() {
     if (!quote || !form.originLocationId || !form.destinationLocationId) return;
@@ -120,6 +132,6 @@ export function DealCalculatorPage() {
   return <main className="calculator-page"><div className="calculator-shell">
     <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
     <section className="calculator-card"><ContainerModeSwitch category={category} onChange={changeCategory} /><CalculatorForm category={category} form={form} errors={errors} onChange={updateForm} onSubmit={() => void calculate()} />{calculationError && <p className="calculator-error">{calculationError}</p>}</section>
-    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={setSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /><CalculationExplanation quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
+    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /><CalculationExplanation quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
   </div></main>;
 }
