@@ -40,10 +40,12 @@ export type CalculationQuote = {
     portHandlingDestination: number | null;
     connectionOrigin: number | null;
     connectionDestination: number | null;
+    terminalConnections: number | null;
     containerUsage: number | null;
     containerStorage: number | null;
     additionalServices: number | null;
     lastMile: number | null;
+    identification: number | null;
     eaeuConfirmation: number | null;
     moneyCost: number | null;
     otherExpenses: number | null;

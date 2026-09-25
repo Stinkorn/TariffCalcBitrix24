@@ -60,6 +60,11 @@ enum MainlineOperationType {
   UNLOAD
 }
 
+enum ContainerUsageRateType {
+  USAGE
+  STORAGE
+}
+
 enum RailServiceUnit {
   PER_TRIP
   PER_SERVICE
@@ -350,6 +355,7 @@ model Terminal {
   seaLiloRatesTo   SeaLiloRate[]      @relation("SeaLiloToTerminal")
   seaFiosRatesFrom SeaFiosRate[]      @relation("SeaFiosFromTerminal")
   seaFiosRatesTo   SeaFiosRate[]      @relation("SeaFiosToTerminal")
+  containerUsageRates ContainerUsageRate[] @relation("ContainerUsageOriginTerminal")
 
   @@index([locationId])
   @@map("terminals")
@@ -517,10 +523,14 @@ model ContainerUsageRate {
   rate           Decimal         @db.Decimal(18, 2)
   rateStartDate  DateTime        @map("rate_start_date")
   rateFinishDate DateTime?       @map("rate_finish_date")
+  rateType       ContainerUsageRateType @default(USAGE) @map("rate_type")
+  originTerminalId Int?          @map("origin_terminal_id")
   container      Container       @relation(fields: [containerId], references: [id])
   status         ContainerStatus @relation(fields: [statusId], references: [id])
+  originTerminal Terminal?       @relation("ContainerUsageOriginTerminal", fields: [originTerminalId], references: [id])
 
   @@index([containerId, statusId, rateStartDate, rateFinishDate])
+  @@index([containerId, statusId, rateType, originTerminalId, rateStartDate, rateFinishDate])
   @@map("container_usage_rates")
 }
 
