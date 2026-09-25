@@ -14,7 +14,7 @@ export type RouteStage = {
   source?: Record<string, unknown>;
 };
 
-export type BreakdownLine = { label: string; value: string; emphasis?: boolean };
+export type BreakdownLine = { label: string; value: string; numericValue?: number; emphasis?: boolean };
 
 export type CalculationQuote = {
   category: CalculatorCategory;
