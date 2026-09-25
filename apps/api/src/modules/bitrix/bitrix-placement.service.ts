@@ -26,6 +26,7 @@ const DEBUG_PLACEMENT = {
 type PlacementConfig = typeof PRIMARY_PLACEMENT | typeof DEBUG_PLACEMENT;
 
 type BitrixPlacementAuth = {
+  portalId: string;
   domain: string;
   accessToken: string;
   scope?: string | null;
@@ -42,6 +43,7 @@ type BitrixInstallPayload = {
   client_endpoint?: string;
   AUTH_EXPIRES?: string | number;
   expires?: string | number;
+  expires_in?: string | number;
   expires_at?: string | number;
   APPLICATION_SCOPE?: string;
   scope?: string;
@@ -50,6 +52,7 @@ type BitrixInstallPayload = {
     access_token?: string;
     refresh_token?: string;
     expires?: string | number;
+    expires_in?: string | number;
     domain?: string;
     member_id?: string;
     scope?: string;
@@ -659,7 +662,18 @@ export class BitrixPlacementService {
     params: Record<string, unknown>,
     authInput: BitrixPlacementAuth
   ) {
-    return this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
+    try {
+      return await this.bitrixRestClient.callMethod(authInput.domain, authInput.accessToken, method, params);
+    } catch (error) {
+      if (!this.isExpiredTokenError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(`Bitrix access token expired, refreshing: portal=${authInput.domain}, method=${method}`);
+      const refreshed = await this.refreshPortalToken(authInput.portalId);
+      this.logger.log(`Bitrix access token refreshed: portal=${authInput.domain}`);
+      return this.bitrixRestClient.callMethod(authInput.domain, refreshed.accessToken, method, params);
+    }
   }
 
   private async getDealUserFields(auth: BitrixPlacementAuth) {
@@ -833,6 +847,7 @@ export class BitrixPlacementService {
     if (latestToken.expiresAt.getTime() <= Date.now() + 60_000) {
       const refreshed = await this.refreshPortalToken(portal.id, latestToken.refreshToken);
       return {
+        portalId: portal.id,
         domain: portal.domain,
         accessToken: refreshed.accessToken,
         scope: refreshed.scope
@@ -840,6 +855,7 @@ export class BitrixPlacementService {
     }
 
     return {
+      portalId: portal.id,
       domain: portal.domain,
       accessToken: latestToken.accessToken,
       scope: latestToken.scope
@@ -848,7 +864,7 @@ export class BitrixPlacementService {
 
   private async refreshPortalToken(
     portalId: string,
-    refreshToken: string
+    refreshTokenOverride?: string
   ): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date; scope?: string | null }> {
     const clientId = this.configService.get<string>('BITRIX_CLIENT_ID')?.trim();
     const clientSecret = this.configService.get<string>('BITRIX_CLIENT_SECRET')?.trim();
@@ -859,12 +875,6 @@ export class BitrixPlacementService {
       );
     }
 
-    const refreshed = await this.bitrixRestClient.refreshAccessToken({
-      clientId,
-      clientSecret,
-      refreshToken
-    });
-
     const latestToken = await this.prisma.bitrixToken.findFirst({
       where: { portalId },
       orderBy: { createdAt: 'desc' }
@@ -873,6 +883,12 @@ export class BitrixPlacementService {
     if (!latestToken) {
       throw new NotFoundException('Saved Bitrix token not found');
     }
+
+    const refreshed = await this.bitrixRestClient.refreshAccessToken({
+      clientId,
+      clientSecret,
+      refreshToken: refreshTokenOverride ?? latestToken.refreshToken
+    });
 
     const expiresAt = this.resolveExpiresAt({
       expires: refreshed.expires ?? refreshed.expires_in
@@ -922,20 +938,38 @@ export class BitrixPlacementService {
     AUTH_EXPIRES?: string | number;
     expires?: string | number;
     expires_at?: string | number;
+    expires_in?: string | number;
   }) {
-    if (payload.expires_at !== undefined) {
-      const raw = Number(payload.expires_at);
-      if (Number.isFinite(raw) && raw > 0) {
-        return raw > 1_000_000_000_000 ? new Date(raw) : new Date(raw * 1000);
+    for (const value of [payload.expires_at, payload.AUTH_EXPIRES, payload.expires, payload.expires_in]) {
+      const resolved = this.resolveExpiryValue(value);
+      if (resolved) {
+        return resolved;
       }
     }
 
-    const expiresSeconds = Number(payload.AUTH_EXPIRES ?? payload.expires ?? 3600);
-    if (Number.isFinite(expiresSeconds) && expiresSeconds > 0) {
-      return new Date(Date.now() + expiresSeconds * 1000);
+    return new Date(Date.now() + 3600 * 1000);
+  }
+
+  private resolveExpiryValue(value: unknown): Date | null {
+    const raw = Number(value);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return null;
     }
 
-    return new Date(Date.now() + 3600 * 1000);
+    if (raw > 1_000_000_000_000) {
+      return new Date(raw);
+    }
+
+    if (raw > 1_000_000_000) {
+      return new Date(raw * 1000);
+    }
+
+    return new Date(Date.now() + raw * 1000);
+  }
+
+  private isExpiredTokenError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return /expired[_ ]token|access token[^\n]*expired|token[^\n]*expired/i.test(message);
   }
 
   private normalizeInstallPayload(
@@ -959,7 +993,7 @@ export class BitrixPlacementService {
         this.readString(source.AUTH_ID) ?? this.readString(auth?.access_token),
       refreshToken:
         this.readString(source.REFRESH_ID) ?? this.readString(auth?.refresh_token),
-      expires: source.AUTH_EXPIRES ?? auth?.expires ?? source.expires,
+      expires: source.AUTH_EXPIRES ?? auth?.expires ?? source.expires ?? source.expires_in,
       expiresAt: source.expires_at,
       scope:
         this.readString(source.APPLICATION_SCOPE) ??
