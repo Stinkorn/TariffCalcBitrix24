@@ -780,6 +780,8 @@ body { background: #fff; }
 /* Shared calculator-form geometry for DRY and REF. */
 .calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-label-gap: 16px; --field-gap: var(--field-label-gap); }
 .breakdown-line.emphasis + .breakdown-line.emphasis { margin-top: 0; padding-top: 7px; border-top: 0; }
+.breakdown-line.emphasis + .breakdown-line:not(.emphasis) { margin-top: 5px; padding-top: 14px; border-top: 1px solid #e3eaf3; }
+.commercial-metrics div span { min-height: 2.7em; line-height: 1.35; }
 .form-row-route > label,
 .form-row-cargo > label {
   display: grid;

@@ -13,11 +13,11 @@ export function validateCalculatorForm(form: CalculatorFormState) {
 }
 
 export function formatRubles(value: number) {
-  return new Intl.NumberFormat('ru-RU').format(value) + ' ₽';
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.ceil(value)) + ' ₽';
 }
 
 export function calculateDiscount(base: number, saleRate: string) {
   const sale = Number(saleRate);
-  if (!saleRate || !Number.isFinite(sale) || base <= 0) return null;
-  return ((base - sale) / base) * 100;
+  if (!saleRate || !Number.isFinite(sale) || base <= 0) return 0;
+  return Math.ceil(((base - sale) / base) * 1000) / 10;
 }
