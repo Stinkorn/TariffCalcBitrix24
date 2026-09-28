@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsDateString,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -10,6 +11,7 @@ import {
   ValidateNested
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ContainerCategory, ContainerStatusCode } from '@prisma/client';
 
 class CreateCalculationLineDto {
   @IsString()
@@ -62,6 +64,15 @@ export class CreateCalculationDto {
   @IsString()
   routeType?: string;
 
+  @IsOptional() @IsEnum(ContainerCategory)
+  category?: ContainerCategory;
+
+  @IsOptional() @IsString() originLocationId?: string;
+  @IsOptional() @IsString() destinationLocationId?: string;
+  @IsOptional() @IsNumber() containerId?: number;
+  @IsOptional() @IsNumber() cargoId?: number;
+  @IsOptional() @IsEnum(ContainerStatusCode) owner?: ContainerStatusCode;
+
   @IsString()
   @IsNotEmpty()
   origin!: string;
@@ -101,6 +112,9 @@ export class CreateCalculationDto {
   @IsNumber()
   @Min(0)
   marginValue?: number;
+
+  @IsOptional() @IsNumber() @Min(0)
+  paymentDelayDays?: number;
 
   @IsNumber()
   totalCost!: number;

@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCalculationDto } from './dto/create-calculation.dto';
 
@@ -7,15 +8,29 @@ import { CreateCalculationDto } from './dto/create-calculation.dto';
 export class CalculationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(payload: CreateCalculationDto) {
+  async create(payload: CreateCalculationDto, authenticatedPortalId: string) {
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    const tenantPayload = { ...payload, portalDomain: authorizedPortalDomain };
+    const requestFingerprint = buildRequestFingerprint(tenantPayload);
+    const existingCurrent = requestFingerprint
+      ? await this.prisma.calculation.findFirst({ where: { portalDomain: authorizedPortalDomain, requestFingerprint, isCurrent: true }, select: { id: true } })
+      : null;
     const created = await this.prisma.calculation.create({
       data: {
-        portalDomain: payload.portalDomain ?? null,
+        portalDomain: authorizedPortalDomain,
         dealId: payload.dealId ?? null,
         counterpartyId: payload.counterpartyId ?? null,
         counterpartyType: payload.counterpartyType ?? null,
         counterpartyName: payload.counterpartyName ?? null,
         routeType: payload.routeType ?? null,
+        requestFingerprint,
+        isCurrent: Boolean(requestFingerprint && !existingCurrent),
+        category: payload.category ?? null,
+        originLocationId: payload.originLocationId ?? null,
+        destinationLocationId: payload.destinationLocationId ?? null,
+        containerId: payload.containerId ?? null,
+        cargoId: payload.cargoId ?? null,
+        owner: payload.owner ?? null,
         origin: payload.origin,
         destination: payload.destination,
         weightKg: payload.weightKg,
@@ -29,6 +44,7 @@ export class CalculationsService {
         clientPrice: payload.clientPrice,
         marginType: payload.marginType ?? null,
         marginValue: payload.marginValue ?? null,
+        paymentDelayDays: payload.paymentDelayDays ?? null,
         services: payload.services ?? undefined,
         warnings: payload.warnings ?? undefined,
         tariffSnapshot: payload.tariffSnapshot as Prisma.InputJsonValue | undefined,
@@ -84,4 +100,112 @@ export class CalculationsService {
       include: { lines: { orderBy: { sortOrder: 'asc' } } }
     });
   }
+
+  async getHistory(query: HistoryQuery, authenticatedPortalId: string) {
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const where: Prisma.CalculationWhereInput = {
+      portalDomain: authorizedPortalDomain,
+      ...(query.counterpartyId ? { counterpartyId: query.counterpartyId } : {}),
+      ...(query.counterpartyName ? { counterpartyName: { contains: query.counterpartyName, mode: 'insensitive' } } : {}),
+      ...(query.containerId ? { containerId: Number(query.containerId) } : {}),
+      ...(query.containerType ? { containerType: query.containerType } : {}),
+      ...(query.originLocationId ? { originLocationId: query.originLocationId } : {}),
+      ...(query.destinationLocationId ? { destinationLocationId: query.destinationLocationId } : {}),
+      ...(query.status === 'CURRENT' ? { isCurrent: true } : query.status === 'ARCHIVED' ? { isCurrent: false } : {})
+    };
+    const [total, currentCount, lastIssued, deltaRows] = await Promise.all([
+      this.prisma.calculation.count({ where }),
+      this.prisma.calculation.count({ where: { ...where, isCurrent: true } }),
+      this.prisma.calculation.findFirst({ where, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      this.prisma.calculation.findMany({ where: { ...where, requestFingerprint: { not: null } }, select: { id: true, requestFingerprint: true, portalDomain: true, clientPrice: true, createdAt: true } })
+    ]);
+    const summaryDeltas = calculateDeltas(deltaRows);
+    const deltaValues = deltaRows.map((row) => summaryDeltas.get(row.id) ?? null).filter((value): value is number => value !== null);
+    const averageDeltaPercent = deltaValues.length ? deltaValues.reduce((sum, value) => sum + value, 0) / deltaValues.length : null;
+    const rows = await this.prisma.calculation.findMany({ where, orderBy: [{ isCurrent: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * pageSize, take: pageSize });
+    const items = await this.toHistoryItems(rows, authorizedPortalDomain);
+    return { items, pagination: { page, pageSize, total }, summary: { filteredCount: total, currentCount, lastIssuedAt: lastIssued?.createdAt ?? null, averageDeltaPercent } };
+  }
+
+  async getRequestHistory(id: string, authenticatedPortalId: string) {
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    const item = await this.prisma.calculation.findFirst({ where: { id, portalDomain: authorizedPortalDomain } });
+    if (!item) throw new NotFoundException(`Calculation ${id} not found`);
+    if (!item.requestFingerprint) return { items: [], supported: false };
+    const rows = await this.prisma.calculation.findMany({ where: { portalDomain: authorizedPortalDomain, requestFingerprint: item.requestFingerprint }, orderBy: { createdAt: 'desc' } });
+    return { items: await this.toHistoryItems(rows, authorizedPortalDomain) };
+  }
+
+  async setCurrent(id: string, authenticatedPortalId: string) {
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const selected = await transaction.calculation.findFirst({ where: { id, portalDomain: authorizedPortalDomain } });
+        if (!selected) throw new NotFoundException(`Calculation ${id} not found`);
+        if (!selected.requestFingerprint || !selected.portalDomain) throw new ForbiddenException('Legacy calculations cannot be marked as current');
+        await transaction.calculation.updateMany({ where: { portalDomain: authorizedPortalDomain, requestFingerprint: selected.requestFingerprint, isCurrent: true }, data: { isCurrent: false } });
+        return transaction.calculation.update({ where: { id: selected.id }, data: { isCurrent: true } });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Another current tariff was selected concurrently');
+      throw error;
+    }
+  }
+
+  private async resolveAuthorizedPortal(portalId: string) {
+    const portal = await this.prisma.bitrixPortal.findUnique({ where: { id: portalId }, select: { domain: true } });
+    if (!portal?.domain) throw new ForbiddenException('Authenticated Bitrix portal was not found');
+    return portal.domain;
+  }
+
+  private async toHistoryItems(rows: any[], authorizedPortalDomain: string) {
+    const fingerprints = Array.from(new Set(rows.map((row) => row.requestFingerprint).filter(Boolean))) as string[];
+    const candidates = fingerprints.length ? await this.prisma.calculation.findMany({ where: { portalDomain: authorizedPortalDomain, requestFingerprint: { in: fingerprints } }, select: { id: true, requestFingerprint: true, portalDomain: true, clientPrice: true, createdAt: true } }) : [];
+    const deltas = calculateDeltas(candidates);
+    return rows.map((row) => ({ id: row.id, counterparty: row.counterpartyName, origin: row.origin, destination: row.destination, category: row.category, container: row.containerType, weightKg: Number(row.weightKg), createdAt: row.createdAt, clientPrice: Number(row.clientPrice), currency: row.currency, isCurrent: row.isCurrent, requestFingerprint: row.requestFingerprint, deltaPercent: deltas.get(row.id) ?? null }));
+  }
+}
+
+export type HistoryQuery = { page?: string; pageSize?: string; counterpartyId?: string; counterpartyName?: string; containerType?: string; containerId?: string; originLocationId?: string; destinationLocationId?: string; status?: 'ALL' | 'CURRENT' | 'ARCHIVED' };
+
+export function buildRequestFingerprint(payload: Pick<CreateCalculationDto, 'portalDomain' | 'counterpartyId' | 'counterpartyName' | 'category' | 'originLocationId' | 'destinationLocationId' | 'containerId' | 'cargoId' | 'weightKg' | 'owner' | 'services' | 'paymentDelayDays'>) {
+  const portalDomain = normalizeString(payload.portalDomain);
+  const counterpartyIdentity = payload.counterpartyId ? ['ID', normalizeString(payload.counterpartyId)] : ['NAME', normalizeString(payload.counterpartyName)];
+  const category = normalizeString(payload.category);
+  const originLocationId = normalizeString(payload.originLocationId);
+  const destinationLocationId = normalizeString(payload.destinationLocationId);
+  const containerId = normalizeId(payload.containerId);
+  const cargoId = normalizeId(payload.cargoId);
+  const weightKg = normalizeWeight(payload.weightKg);
+  const owner = normalizeString(payload.owner);
+  const paymentDelayDays = normalizeInteger(payload.paymentDelayDays);
+  if (!portalDomain || !counterpartyIdentity[1] || !category || !originLocationId || !destinationLocationId || containerId === null || !owner || paymentDelayDays === null || weightKg === null || !payload.services) return null;
+  const canonical = [portalDomain, counterpartyIdentity, category, originLocationId, destinationLocationId, containerId, cargoId, weightKg, owner, Boolean(payload.services.identification), Boolean(payload.services.genset), Boolean(payload.services.dangerous), paymentDelayDays];
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function normalizeString(value: unknown) { return typeof value === 'string' ? (value.trim() || null) : value === null || value === undefined ? null : String(value).trim() || null; }
+function normalizeId(value: unknown) { const numeric = Number(value); return Number.isFinite(numeric) && Number.isInteger(numeric) ? numeric : null; }
+function normalizeWeight(value: unknown) { const numeric = Number(value); return Number.isFinite(numeric) ? numeric : null; }
+function normalizeInteger(value: unknown) { const numeric = Number(value); return Number.isFinite(numeric) && Number.isInteger(numeric) ? numeric : null; }
+
+function calculateDeltas(rows: Array<{ id: string; requestFingerprint: string | null; portalDomain: string | null; clientPrice: unknown; createdAt: Date }>) {
+  const result = new Map<string, number | null>();
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!row.requestFingerprint) { result.set(row.id, null); continue; }
+    const key = `${row.portalDomain ?? ''}:${row.requestFingerprint}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  for (const group of groups.values()) {
+    group.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    group.forEach((row, index) => {
+      const previous = group[index - 1];
+      const previousPrice = previous ? Number(previous.clientPrice) : 0;
+      result.set(row.id, previous && previousPrice > 0 ? (Number(row.clientPrice) - previousPrice) / previousPrice * 100 : null);
+    });
+  }
+  return result;
 }

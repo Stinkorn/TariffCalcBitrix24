@@ -245,36 +245,51 @@ model User {
 }
 
 model Calculation {
-  id               String            @id @default(uuid())
-  portalDomain     String?
-  dealId           String?
-  counterpartyId   String?
-  counterpartyType String?
-  counterpartyName String?
-  routeType        String?
-  origin           String
-  destination      String
-  weightKg         Decimal           @db.Decimal(18, 3)
-  volumeM3         Decimal           @db.Decimal(18, 3)
-  transportType    String
-  containerType    String?
-  containerStatus  String?
-  currency         String
-  totalCost        Decimal           @db.Decimal(18, 2)
-  clientPrice      Decimal           @db.Decimal(18, 2)
-  margin           Decimal           @db.Decimal(18, 2)
-  marginType       String?
-  marginValue      Float?
-  services         Json?
-  warnings         Json?
-  status           String            @default("DRAFT")
-  tariffSnapshot   Json?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  lines            CalculationLine[]
+  id                    String               @id @default(uuid())
+  portalDomain          String?
+  dealId                String?
+  counterpartyId        String?
+  counterpartyType      String?
+  counterpartyName      String?
+  routeType             String?
+  requestFingerprint    String?
+  isCurrent             Boolean              @default(false)
+  category              ContainerCategory?
+  originLocationId      String?
+  destinationLocationId String?
+  containerId           Int?
+  cargoId               Int?
+  owner                 ContainerStatusCode?
+  origin                String
+  destination           String
+  weightKg              Decimal              @db.Decimal(18, 3)
+  volumeM3              Decimal              @db.Decimal(18, 3)
+  transportType         String
+  containerType         String?
+  containerStatus       String?
+  currency              String
+  totalCost             Decimal              @db.Decimal(18, 2)
+  clientPrice           Decimal              @db.Decimal(18, 2)
+  margin                Decimal              @db.Decimal(18, 2)
+  marginType            String?
+  marginValue           Float?
+  paymentDelayDays      Int?
+  services              Json?
+  warnings              Json?
+  status                String               @default("DRAFT")
+  tariffSnapshot        Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  lines                 CalculationLine[]
 
   @@index([dealId])
   @@index([createdAt])
+  @@index([requestFingerprint])
+  @@index([counterpartyId])
+  @@index([isCurrent])
+  @@index([originLocationId])
+  @@index([destinationLocationId])
+  @@index([containerId])
 }
 
 model CalculationLine {

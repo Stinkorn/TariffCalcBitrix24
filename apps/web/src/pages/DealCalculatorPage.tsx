@@ -12,7 +12,7 @@ import { CURRENT_TARIFF_DATE, generateCalculationPdf } from '../features/calcula
 import type { CalculationPdfData } from '../features/calculator/pdf/types';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
 
-type Counterparty = { name?: string | null };
+type Counterparty = { id?: string | null; type?: string | null; name?: string | null };
 const initialForm: CalculatorFormState = { origin: '', originLocationId: null, destination: '', destinationLocationId: null, container: '', containerId: null, cargo: '', cargoId: null, weightKg: '', owner: 'COC', identification: false, genset: false, dangerous: false, paymentDelay: '0' };
 
 export function DealCalculatorPage() {
@@ -96,16 +96,28 @@ export function DealCalculatorPage() {
     const weightKg = Number(form.weightKg.replace(/\s/g, ''));
     if (!Number.isFinite(weightKg)) return;
     const parseAmount = (value: string) => Number(value.replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
+    const effectiveSaleRate = saleRate && Number(saleRate) > 0 ? Number(saleRate) : (quote.baseDoorToDoor ?? 0);
+    const services = { identification: form.identification, genset: form.genset, dangerous: form.dangerous };
     savedCalculationRef.current = fingerprint;
     const response = await apiFetch('/calculations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       dealId: dealId || undefined,
-      portalDomain: portalDomain || undefined,
+      counterpartyId: counterparty?.id || undefined,
+      counterpartyType: counterparty?.type || undefined,
       counterpartyName: counterparty?.name || undefined,
-      routeType: 'KLD_OUT', origin: form.origin, destination: form.destination, weightKg, volumeM3: 0,
+      routeType: quote.direction,
+      category,
+      originLocationId: form.originLocationId,
+      destinationLocationId: form.destinationLocationId,
+      origin: form.origin, destination: form.destination, weightKg, volumeM3: 0,
+      containerId: Number(form.containerId),
+      cargoId: form.cargoId ? Number(form.cargoId) : undefined,
+      owner: form.owner,
+      paymentDelayDays: Number(form.paymentDelay),
       transportType: 'MULTIMODAL', containerType: form.container || undefined, containerStatus: 'LOADED', currency: 'RUB',
-      marginType: 'fixed', marginValue: 0, totalCost: quote.baseDoorToDoor ?? 0, margin: 0, clientPrice: quote.baseDoorToDoor ?? 0,
+      marginType: 'fixed', marginValue: 0, totalCost: quote.baseDoorToDoor ?? 0, margin: 0, clientPrice: effectiveSaleRate,
       lines: quote.routeStages.map((stage) => ({ stage: stage.mode, name: stage.title, cost: parseAmount(stage.amount), currency: 'RUB', sortOrder: stage.number })),
-      services: { identification: form.identification, genset: form.genset, dangerous: form.dangerous, paymentDelay: Number(form.paymentDelay) > 0 }
+      services,
+      tariffSnapshot: { tariffDate: CURRENT_TARIFF_DATE, request: { category, originLocationId: form.originLocationId, origin: form.origin, destinationLocationId: form.destinationLocationId, destination: form.destination, containerId: Number(form.containerId), container: form.container, cargoId: form.cargoId ? Number(form.cargoId) : null, cargo: form.cargo, weightKg, owner: form.owner, services, paymentDelayDays: Number(form.paymentDelay) }, commercial: { saleRate: saleRate ? Number(saleRate) : null, effectiveSaleRate, baseDoorToDoor: quote.baseDoorToDoor }, quote }
     }) });
     if (!response.ok) savedCalculationRef.current = null;
   }
