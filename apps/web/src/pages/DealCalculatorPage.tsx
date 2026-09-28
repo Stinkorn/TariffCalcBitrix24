@@ -8,7 +8,6 @@ import { CalculatorForm } from '../features/calculator/components/CalculatorForm
 import { CommercialRatePanel } from '../features/calculator/components/CommercialRatePanel';
 import { AdditionalServices, CalculationBreakdown, RouteStages } from '../features/calculator/components/ResultPanels';
 import { validateCalculatorForm } from '../features/calculator/utils';
-import { findExact, loadCargo, loadLocations } from '../features/calculator/directoryData';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
 
 type Counterparty = { name?: string | null };
@@ -56,30 +55,9 @@ export function DealCalculatorPage() {
     }).catch((error) => console.warn('[counterparty] request failed', error instanceof Error ? error.message : 'unknown error'));
   }, [apiFetch, dealId, portalDomain]);
 
-  useEffect(() => {
-    if (!dealId) return;
-    const query = portalDomain ? `?portalDomain=${encodeURIComponent(portalDomain)}` : '';
-    void apiFetch(`/bitrix/deals/${encodeURIComponent(dealId)}/prefill${query}`).then(async (response) => {
-      if (!response.ok) return;
-      const data = await response.json() as { origin?: string; destination?: string; cargoName?: string };
-      const origin = data.origin?.trim() || '';
-      const destination = data.destination?.trim() || '';
-      const cargo = data.cargoName?.trim() || '';
-      const [locations, cargoItems] = await Promise.all([loadLocations(apiFetch), loadCargo(apiFetch)]);
-      const originItem = origin ? findExact(locations, origin, ['city', 'label']) : null;
-      const destinationItem = destination ? findExact(locations, destination, ['city', 'label']) : null;
-      const cargoItem = cargo ? findExact(cargoItems, cargo, ['name', 'etsng', 'label']) : null;
-      setForm((current) => ({
-        ...current,
-        origin: current.origin || origin,
-        originLocationId: current.originLocationId || originItem?.id || null,
-        destination: current.destination || destination,
-        destinationLocationId: current.destinationLocationId || destinationItem?.id || null,
-        cargo: current.cargo || cargo,
-        cargoId: current.cargoId || cargoItem?.id || null
-      }));
-    }).catch(() => undefined);
-  }, [apiFetch, dealId, portalDomain]);
+  // Deal fields "Пункт погрузки", "Пункт выгрузки" and "Груз"
+  // are intentionally not used to prefill the calculator.
+  // Every deal calculation starts with empty fields.
 
   useEffect(() => { sendResizeToBitrix(); }, [quote, category, form, saleRate]);
 
