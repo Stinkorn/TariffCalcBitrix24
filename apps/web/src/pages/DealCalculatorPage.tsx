@@ -8,6 +8,8 @@ import { CalculatorForm } from '../features/calculator/components/CalculatorForm
 import { CommercialRatePanel } from '../features/calculator/components/CommercialRatePanel';
 import { AdditionalServices, CalculationBreakdown, RouteStages } from '../features/calculator/components/ResultPanels';
 import { validateCalculatorForm } from '../features/calculator/utils';
+import { CURRENT_TARIFF_DATE, generateCalculationPdf } from '../features/calculator/pdf/calculationPdf';
+import type { CalculationPdfData } from '../features/calculator/pdf/types';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
 
 type Counterparty = { name?: string | null };
@@ -23,6 +25,8 @@ export function DealCalculatorPage() {
   const [quote, setQuote] = useState<CalculationQuote | null>(null);
   const [saleRate, setSaleRate] = useState('');
   const [counterparty, setCounterparty] = useState<Counterparty | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const savedCalculationRef = useRef<string | null>(null);
   const calculationVersionRef = useRef(0);
   const saleRateRecalcRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -106,10 +110,17 @@ export function DealCalculatorPage() {
     if (!response.ok) savedCalculationRef.current = null;
   }
   function newCalculation() { void saveCurrentCalculation().catch(() => { savedCalculationRef.current = null; }); setForm(initialForm); setCategory('DRY'); setQuote(null); setCalculationError(''); setSaleRate(''); setErrors({}); }
+  async function savePdf() {
+    if (!quote || pdfLoading) return;
+    setPdfLoading(true); setPdfError('');
+    const effectiveSaleRate = saleRate && Number(saleRate) > 0 ? Number(saleRate) : (quote.baseDoorToDoor ?? 0);
+    const data: CalculationPdfData = { dealId, counterpartyName: counterparty?.name || 'Не указан', category, origin: form.origin, destination: form.destination, cargo: form.cargo, container: form.container, weightKg: form.weightKg, owner: form.owner, paymentDelayDays: Number(form.paymentDelay), tariffDate: CURRENT_TARIFF_DATE, saleRate: effectiveSaleRate, baseDoorToDoor: quote.baseDoorToDoor, quote };
+    try { await generateCalculationPdf(data); } catch { setPdfError('Не удалось сформировать PDF. Попробуйте ещё раз.'); } finally { setPdfLoading(false); }
+  }
 
   return <main className="calculator-page"><div className="calculator-shell">
     <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
     <section className="calculator-card"><ContainerModeSwitch category={category} onChange={changeCategory} /><CalculatorForm category={category} form={form} errors={errors} onChange={updateForm} onSubmit={() => void calculate()} />{calculationError && <p className="calculator-error">{calculationError}</p>}</section>
-    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /></div><CalculationBreakdown quote={quote} /></div></>}
+    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /></div><CalculationBreakdown quote={quote} onSavePdf={() => void savePdf()} pdfLoading={pdfLoading} pdfError={pdfError} /></div></>}
   </div></main>;
 }
