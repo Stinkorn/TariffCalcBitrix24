@@ -112,8 +112,9 @@ export class CalculatorService {
     if (!fios) warnings.push('SEA_FIOS_RATE_NOT_FOUND'); if (!usage) warnings.push('CONTAINER_USAGE_RATE_NOT_FOUND'); if (!storage) warnings.push('CONTAINER_STORAGE_RATE_NOT_FOUND');
     const portHandlingOrigin = await this.portHandling(direction, 'origin', date, warnings); const portHandlingDestination = await this.portHandling(direction, 'destination', date, warnings);
     const connectionOrigin = input.category === 'REF' ? await this.ruleValue('CONNECTION_ORIGIN', date, warnings) : 0; const connectionDestination = input.category === 'REF' ? await this.ruleValue('CONNECTION_DESTINATION', date, warnings) : 0;
-    const total = rub(lilo.rate) + portHandlingOrigin.amount + rub(fios?.rate) + portHandlingDestination.amount + rub(usage?.rate) + rub(storage?.rate) + connectionOrigin + connectionDestination;
-    return { liLo: rub(lilo.rate), fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination, missing: false, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф найден', total, { table: 'sea_lilo_rates', rateId: lilo.id, rawRate: rub(lilo.rate), fromTerminalId, toTerminalId, fios: { table: 'sea_fios_rates', rateId: fios?.id ?? null, rawRate: fios ? rub(fios.rate) : null }, portHandling: { origin: portHandlingOrigin, destination: portHandlingDestination }, usageRateId: usage?.id ?? null, storageRateId: storage?.id ?? null, containerState, components: { liLo: rub(lilo.rate), fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination } }) };
+    const componentsTotal = rub(lilo.rate) + portHandlingOrigin.amount + rub(fios?.rate) + portHandlingDestination.amount + rub(usage?.rate) + rub(storage?.rate) + connectionOrigin + connectionDestination;
+    const liLoAmount = rub(lilo.rate);
+    return { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination, missing: false, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф найден', liLoAmount, { table: 'sea_lilo_rates', rateId: lilo.id, rawRate: liLoAmount, fromTerminalId, toTerminalId, fios: { table: 'sea_fios_rates', rateId: fios?.id ?? null, rawRate: fios ? rub(fios.rate) : null }, portHandling: { origin: portHandlingOrigin, destination: portHandlingDestination }, usageRateId: usage?.id ?? null, storageRateId: storage?.id ?? null, containerState, componentsTotal, components: { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination } }) };
   }
 
   private async portHandling(direction: QuoteDirection, side: 'origin' | 'destination', date: Date, warnings: string[]) {
@@ -140,8 +141,9 @@ export class CalculatorService {
     const code = special ? 'ADDITIONAL_SERVICES_KLD_SOC_ZERO' : 'ADDITIONAL_SERVICES_DEFAULT';
     return this.ruleValue(code, date, warnings);
   }
-  private async resolveIdentification(direction: QuoteDirection, date: Date, warnings: string[]) {
-    return this.ruleValue(direction === 'KLD_OUT' ? 'IDENTIFICATION_KLD_OUT' : 'IDENTIFICATION_KLD_IN', date, warnings);
+  private async resolveIdentification(_direction: QuoteDirection, date: Date, warnings: string[]) {
+    // Identification is a fixed 6271 RUB service for both directions under the current tariff rules.
+    return this.ruleValue('IDENTIFICATION_KLD_IN', date, warnings);
   }
   private async resolveMainlineRates(serviceLocationId: number, weightKg: number, date: Date) {
     const where = { serviceLocationId, weightFromKg: { lte: weightKg }, OR: [{ weightToKg: null }, { weightToKg: { gte: weightKg } }], ...(activeDate(date) as any) };

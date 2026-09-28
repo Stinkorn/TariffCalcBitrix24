@@ -4,9 +4,11 @@ export function sendResizeToBitrix() {
     document.documentElement.scrollHeight,
     document.body?.scrollHeight ?? 0
   );
+  // Never derive iframe width from content overflow: it would create a
+  // feedback loop where each resize makes the next document wider.
   const width = Math.max(
-    document.documentElement.scrollWidth,
-    document.body?.scrollWidth ?? 0
+    1,
+    Math.floor(document.documentElement.clientWidth || window.innerWidth || 1)
   );
 
   if (window.BX24 && typeof window.BX24.resizeWindow === 'function') {

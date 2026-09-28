@@ -778,6 +778,12 @@ body { background: #fff; }
 @media (max-width: 700px) { .commercial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stage-card { align-items: flex-start; }.stage-result { min-width: 92px; } }
 @media (max-width: 460px) { .commercial-metrics { grid-template-columns: 1fr; } }
 
+/* Keep the Bitrix iframe width viewport-stable even when form content overflows. */
+html, body, #root, .calculator-page { width: 100%; max-width: 100%; min-width: 0; }
+.calculator-page { overflow-x: hidden; }
+.calculator-shell { width: 100%; max-width: 1368px; min-width: 0; box-sizing: border-box; }
+.calculator-shell > *, .calculator-card, .commercial-panel, .result-grid, .result-grid > *, .form-row, .form-row > *, .commercial-grid, .commercial-grid > * { min-width: 0; }
+
 /* Shared calculator-form geometry for DRY and REF. */
 .calculator-form { --field-control-height: 52px; --field-label-height: 18px; --field-label-gap: 16px; --field-gap: var(--field-label-gap); }
 .breakdown-line.emphasis + .breakdown-line.emphasis { margin-top: 0; padding-top: 7px; border-top: 0; }
