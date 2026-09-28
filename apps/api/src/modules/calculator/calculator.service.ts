@@ -9,6 +9,11 @@ const PKT_TERMINAL_NAME = 'ПКТ';
 const activeDate = (date: Date) => ({ rateStartDate: { lte: date }, OR: [{ rateFinishDate: null }, { rateFinishDate: { gte: date } }] });
 const rub = (value: unknown) => Number(value ?? 0);
 type QuoteDirection = 'KLD_OUT' | 'KLD_IN';
+const REEFER_DESTINATION_CONNECTION = {
+  KLD_OUT: { amount: 6936, freeDays: 3 },
+  KLD_IN: { amount: 7044, freeDays: 2 },
+} as const;
+type BreakdownUnit = 'RUB' | 'DAYS' | 'PERCENT';
 
 @Injectable()
 export class CalculatorService {
@@ -57,7 +62,26 @@ export class CalculatorService {
     const saleRate = input.saleRate ?? null;
     const commercial = commercialQuote(saleRate !== null && saleRate > 0 ? saleRate : costs.total, costs, input.category);
     const margin = liLoMargin(costs, input.category);
-    const breakdown = [['Базовый тариф LI-LO', costs.liLo], ['ПРР в порту отправки', costs.portHandlingOrigin], ...(input.category === 'REF' ? [['Подключение в порту отправки', costs.connectionOrigin], ['Кол-во дней бесплатного подключения', 0]] as const : []), ['FIOS', costs.fios], ['ПРР в порту прибытия', costs.portHandlingDestination], ...(input.category === 'REF' ? [['Подключение в порту прибытия', costs.connectionDestination], ['Кол-во дней бесплатного подключения', 0]] as const : []), ['Пользование контейнером', costs.containerUsage], ['Хранение контейнера', costs.containerStorage], ['Дополнительные услуги', costs.additionalServices], ['Маржа базового тарифа LI-LO', margin], ['Маржа базового тарифа LI-LO, %', costs.liLo ? margin / costs.liLo * 100 : 0], ['Прочие расходы', costs.otherExpenses], ['Первая миля', costs.firstMile], ['Последняя миля', costs.lastMile], ['Идентификация', costs.identification], ['Отсрочка платежа', input.paymentDelayDays], ['Стоимость денег', costs.moneyCost]].filter(([, value]) => value !== null).map(([label, value]) => ({ label: String(label), numericValue: Number(value), value: String(label) === 'Отсрочка платежа' ? formatDays(Number(value)) : String(label).endsWith(', %') ? `${ceilPercent1(Number(value)).toFixed(1).replace('.', ',')} %` : formatRubles(Number(value)), emphasis: String(label).startsWith('Маржа') }));
+    const breakdownRows: Array<[string, number | null, BreakdownUnit]> = [
+      ['Базовый тариф LI-LO', costs.liLo, 'RUB'],
+      ['ПРР в порту отправки', costs.portHandlingOrigin, 'RUB'],
+      ...(input.category === 'REF' ? [['Подключение в порту отправки', costs.connectionOrigin, 'RUB'], ['Кол-во дней бесплатного подключения', sea.connectionOriginFreeDays, 'DAYS']] as Array<[string, number | null, BreakdownUnit]> : []),
+      ['FIOS', costs.fios, 'RUB'],
+      ['ПРР в порту прибытия', costs.portHandlingDestination, 'RUB'],
+      ...(input.category === 'REF' ? [['Подключение в порту прибытия', costs.connectionDestination, 'RUB'], ['Кол-во дней бесплатного подключения', sea.connectionDestinationFreeDays, 'DAYS']] as Array<[string, number | null, BreakdownUnit]> : []),
+      ['Пользование контейнером', costs.containerUsage, 'RUB'],
+      ['Хранение контейнера', costs.containerStorage, 'RUB'],
+      ['Дополнительные услуги', costs.additionalServices, 'RUB'],
+      ['Маржа базового тарифа LI-LO', margin, 'RUB'],
+      ['Маржа базового тарифа LI-LO, %', costs.liLo ? margin / costs.liLo * 100 : 0, 'PERCENT'],
+      ['Прочие расходы', costs.otherExpenses, 'RUB'],
+      ['Первая миля', costs.firstMile, 'RUB'],
+      ['Последняя миля', costs.lastMile, 'RUB'],
+      ['Идентификация', costs.identification, 'RUB'],
+      ['Отсрочка платежа', input.paymentDelayDays, 'DAYS'],
+      ['Стоимость денег', costs.moneyCost, 'RUB'],
+    ];
+    const breakdown = breakdownRows.filter(([, value]) => value !== null).map(([label, value, unit]) => ({ label, numericValue: Number(value), value: unit === 'DAYS' ? formatDays(Number(value)) : unit === 'PERCENT' ? `${ceilPercent1(Number(value)).toFixed(1).replace('.', ',')} %` : formatRubles(Number(value)), emphasis: label.startsWith('Маржа') }));
     return { category: input.category, direction, baseDoorToDoor, routeStages, costs, breakdown, warnings, additionalServices, debug: { direction, firstMile: first.stage.source, seaLilo: { direction, containerId: container.id, owner: input.owner, state: input.weightKg > 0 ? ContainerState.LOADED : ContainerState.EMPTY, ...(sea.stage.source as object) }, fios: { ...(sea.stage.source as any).fios }, portHandling: { origin: costs.portHandlingOrigin, destination: costs.portHandlingDestination }, lastMile: last.stage.source }, explanation: { distance: [first.stage.details, last.stage.details], weight: [`Вес ${formatNumber(input.weightKg)} кг`, `Контейнер ${container.type}`, `Груз ${cargo ? `${cargo.etsng} — ${cargo.name}` : 'не выбран'}`], base: [`Собственник ${input.owner}`, `Отсрочка ${input.paymentDelayDays} дней`, `База дверь/дверь: ${baseDoorToDoor === null ? '—' : formatRubles(baseDoorToDoor)}`] }, commercial };
   }
 
@@ -133,13 +157,14 @@ export class CalculatorService {
     const containerState = input.weightKg > 0 ? ContainerState.LOADED : ContainerState.EMPTY; const where = { fromTerminalId, toTerminalId, containerId: container.id, statusId: status.id, containerState, ...(activeDate(date) as any) };
     const [lilo, fios, usage, storage] = await Promise.all([this.prisma.seaLiloRate.findFirst({ where, orderBy: { rateStartDate: 'desc' } }), this.prisma.seaFiosRate.findFirst({ where: { fromTerminalId, toTerminalId, containerId: container.id, containerState, ...(activeDate(date) as any) }, orderBy: { rateStartDate: 'desc' } }), this.prisma.containerUsageRate.findFirst({ where: { containerId: container.id, statusId: status.id, rateType: 'USAGE', OR: [{ originTerminalId: fromTerminalId }, { originTerminalId: null }], ...(activeDate(date) as any) }, orderBy: { rateStartDate: 'desc' } }), this.prisma.containerUsageRate.findFirst({ where: { containerId: container.id, statusId: status.id, rateType: 'STORAGE', originTerminalId: fromTerminalId, ...(activeDate(date) as any) }, orderBy: { rateStartDate: 'desc' } })]);
     const seaTitle = `${fromName} → ${toName}`;
-    if (!lilo) { warnings.push('SEA_LILO_RATE_NOT_FOUND'); return { liLo: 0, fios: 0, portHandlingOrigin: 0, portHandlingDestination: 0, containerUsage: 0, containerStorage: 0, connectionOrigin: 0, connectionDestination: 0, missing: true, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф не определён', 0, { table: 'sea_lilo_rates', rateId: null, fromTerminalId, toTerminalId, rawRate: null }) }; }
+    if (!lilo) { warnings.push('SEA_LILO_RATE_NOT_FOUND'); return { liLo: 0, fios: 0, portHandlingOrigin: 0, portHandlingDestination: 0, containerUsage: 0, containerStorage: 0, connectionOrigin: 0, connectionDestination: 0, connectionOriginFreeDays: 0, connectionDestinationFreeDays: 0, missing: true, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф не определён', 0, { table: 'sea_lilo_rates', rateId: null, fromTerminalId, toTerminalId, rawRate: null }) }; }
     if (!fios) warnings.push('SEA_FIOS_RATE_NOT_FOUND'); if (!usage) warnings.push('CONTAINER_USAGE_RATE_NOT_FOUND'); if (!storage) warnings.push('CONTAINER_STORAGE_RATE_NOT_FOUND');
     const portHandlingOrigin = await this.portHandling(direction, 'origin', date, warnings); const portHandlingDestination = await this.portHandling(direction, 'destination', date, warnings);
-    const connectionOrigin = input.category === 'REF' ? await this.ruleValue('CONNECTION_ORIGIN', date, warnings) : 0; const connectionDestination = input.category === 'REF' ? await this.ruleValue('CONNECTION_DESTINATION', date, warnings) : 0;
+    const destinationConnection = input.category === 'REF' ? REEFER_DESTINATION_CONNECTION[direction] : { amount: 0, freeDays: 0 };
+    const connectionOrigin = input.category === 'REF' ? await this.ruleValue('CONNECTION_ORIGIN', date, warnings) : 0; const connectionDestination = destinationConnection.amount;
     const componentsTotal = rub(lilo.rate) + portHandlingOrigin.amount + rub(fios?.rate) + portHandlingDestination.amount + rub(usage?.rate) + rub(storage?.rate) + connectionOrigin + connectionDestination;
     const liLoAmount = rub(lilo.rate);
-    return { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination, missing: false, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф найден', liLoAmount, { table: 'sea_lilo_rates', rateId: lilo.id, rawRate: liLoAmount, fromTerminalId, toTerminalId, fios: { table: 'sea_fios_rates', rateId: fios?.id ?? null, rawRate: fios ? rub(fios.rate) : null }, portHandling: { origin: portHandlingOrigin, destination: portHandlingDestination }, usageRateId: usage?.id ?? null, storageRateId: storage?.id ?? null, containerState, componentsTotal, components: { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination } }) };
+    return { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination, connectionOriginFreeDays: 0, connectionDestinationFreeDays: destinationConnection.freeDays, missing: false, stage: this.stage(2, 'Море • LI-LO', seaTitle, `${container.type} • ${input.owner} • ${containerState === ContainerState.LOADED ? 'ГРУЖЁНЫЙ' : 'ПОРОЖНИЙ'}`, 'Тариф найден', liLoAmount, { table: 'sea_lilo_rates', rateId: lilo.id, rawRate: liLoAmount, fromTerminalId, toTerminalId, fios: { table: 'sea_fios_rates', rateId: fios?.id ?? null, rawRate: fios ? rub(fios.rate) : null }, portHandling: { origin: portHandlingOrigin, destination: portHandlingDestination }, usageRateId: usage?.id ?? null, storageRateId: storage?.id ?? null, containerState, componentsTotal, components: { liLo: liLoAmount, fios: rub(fios?.rate), portHandlingOrigin: portHandlingOrigin.amount, portHandlingDestination: portHandlingDestination.amount, containerUsage: rub(usage?.rate), containerStorage: rub(storage?.rate), connectionOrigin, connectionDestination } }) };
   }
 
   private async portHandling(direction: QuoteDirection, side: 'origin' | 'destination', date: Date, warnings: string[]) {
