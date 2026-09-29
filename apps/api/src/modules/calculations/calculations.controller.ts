@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { UserRoleCode } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { CalculationsService, type HistoryQuery } from './calculations.service';
@@ -25,19 +25,19 @@ export class CalculationsController {
   }
 
   @Get('history')
-  @Roles(UserRoleCode.ADMIN)
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
   getHistory(@Query() query: HistoryQuery, @Req() request: AuthenticatedRequest) {
     return this.calculationsService.getHistory(query, request.user.portalId);
   }
 
   @Get('history/filter-options')
-  @Roles(UserRoleCode.ADMIN)
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
   getHistoryFilterOptions(@Req() request: AuthenticatedRequest) {
     return this.calculationsService.getHistoryFilterOptions(request.user.portalId);
   }
 
   @Post('history/pdf-data')
-  @Roles(UserRoleCode.ADMIN)
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
   getHistoryPdfData(@Body() body: { ids?: unknown }, @Req() request: AuthenticatedRequest) {
     if (!Array.isArray(body?.ids) || body.ids.some((id) => typeof id !== 'string')) {
       throw new BadRequestException('ids must be an array of calculation IDs');
@@ -46,15 +46,21 @@ export class CalculationsController {
   }
 
   @Get('history/:id/versions')
-  @Roles(UserRoleCode.ADMIN)
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
   getRequestHistory(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
     return this.calculationsService.getRequestHistory(id, request.user.portalId);
   }
 
   @Post(':id/set-current')
-  @Roles(UserRoleCode.ADMIN)
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
   setCurrent(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
     return this.calculationsService.setCurrent(id, request.user.portalId);
+  }
+
+  @Delete(':id')
+  @Roles(UserRoleCode.ADMIN, UserRoleCode.LEAD)
+  delete(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+    return this.calculationsService.delete(id, request.user.portalId);
   }
 
   @Get(':id')

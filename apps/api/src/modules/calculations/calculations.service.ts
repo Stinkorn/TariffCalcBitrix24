@@ -218,6 +218,14 @@ export class CalculationsService {
     }
   }
 
+  async delete(id: string, authenticatedPortalId: string) {
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    const target = await this.prisma.calculation.findFirst({ where: { id, portalDomain: authorizedPortalDomain }, select: { id: true } });
+    if (!target) throw new NotFoundException(`Calculation ${id} not found`);
+    await this.prisma.calculation.delete({ where: { id: target.id } });
+    return { id: target.id, deleted: true };
+  }
+
   private async resolveAuthorizedPortal(portalId: string) {
     const portal = await this.prisma.bitrixPortal.findUnique({ where: { id: portalId }, select: { domain: true } });
     if (!portal?.domain) throw new ForbiddenException('Authenticated Bitrix portal was not found');

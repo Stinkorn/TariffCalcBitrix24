@@ -933,6 +933,11 @@ html, body, #root, .calculator-page { width: 100%; max-width: 100%; min-width: 0
 button.history-current-button { height: auto; padding: 0; border: 0; background: transparent; color: #0a579a; font-size: 10px; line-height: 1.35; text-align: left; white-space: nowrap; }
 button.history-current-button:disabled { background: transparent; color: #8da0b8; opacity: 1; cursor: default; }
 .history-table td { padding-top: 14px; padding-bottom: 14px; line-height: 1.35; }
+.history-table th:nth-child(9), .history-table td:nth-child(9) { width: 48px; min-width: 48px; text-align: center; }
+.history-delete-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #7f91aa; cursor: pointer; }
+.history-delete-button:hover { color: #c2413b; background: #fff1ef; }
+.history-delete-button:disabled { opacity: .45; cursor: default; }
+.history-delete-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 640px) { .history-toolbar { align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; } .history-pdf-error { position: static; width: 100%; white-space: normal; } }
 .nav-link-disabled { color: #b4c0ce; font-size: 13px; cursor: not-allowed; opacity: .7; user-select: none; }
 html, body, button, input, select, textarea { font-family: "Manrope", sans-serif; }

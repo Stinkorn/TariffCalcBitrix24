@@ -31,7 +31,7 @@ export function App() {
         <span className="brand-mark" aria-hidden="true" />
         <span className="brand-name">НОВИК<small>TARIFF CALC</small></span>
         <NavLink to="/calculator">Калькулятор</NavLink>
-        {user?.role === 'ADMIN' ? <NavLink to="/history">История</NavLink> : <span className="nav-link-disabled" aria-disabled="true">История</span>}
+        {user?.role === 'ADMIN' || user?.role === 'LEAD' ? <NavLink to="/history">История</NavLink> : <span className="nav-link-disabled" aria-disabled="true">История</span>}
         {user?.role === 'ADMIN' ? <NavLink to="/tariffs">Тарифы</NavLink> : <span className="nav-link-disabled" aria-disabled="true">Тарифы</span>}
         <span className="nav-spacer" />
         <span className="deal-badge">{searchParams.get('dealId') ? `Сделка #${searchParams.get('dealId')}` : 'Сделка'}</span>
@@ -41,7 +41,7 @@ export function App() {
         <Route path="/calculator" element={<DealCalculatorPage />} />
         <Route path="/deal-calculator" element={<DealCalculatorPage />} />
         <Route path="/bitrix/deal-tab" element={<DealCalculatorPage />} />
-        <Route path="/history" element={user?.role === 'ADMIN' ? <HistoryPage /> : <Navigate to="/calculator" replace />} />
+        <Route path="/history" element={user?.role === 'ADMIN' || user?.role === 'LEAD' ? <HistoryPage /> : <Navigate to="/calculator" replace />} />
         <Route path="/tariffs" element={user?.role === 'ADMIN' ? <TariffsPage /> : <Navigate to="/calculator" replace />} />
         <Route path="*" element={<Navigate to="/calculator" replace />} />
       </Routes>
