@@ -30,6 +30,12 @@ export class CalculationsController {
     return this.calculationsService.getHistory(query, request.user.portalId);
   }
 
+  @Get('history/filter-options')
+  @Roles(UserRoleCode.ADMIN)
+  getHistoryFilterOptions(@Req() request: AuthenticatedRequest) {
+    return this.calculationsService.getHistoryFilterOptions(request.user.portalId);
+  }
+
   @Get('history/:id/versions')
   @Roles(UserRoleCode.ADMIN)
   getRequestHistory(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
