@@ -909,6 +909,21 @@ html, body, #root, .calculator-page { width: 100%; max-width: 100%; min-width: 0
 .history-legacy-note { margin: 12px 0 0; color: #8b9bb2; font-size: 11px; line-height: 1.45; }
 @media (max-width: 1100px) { .history-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .history-filters { grid-template-columns: 1fr; } .history-filter-summary { align-items: flex-start; flex-direction: column; } .history-multiselect-menu { width: 100%; } }
+
+/* History regression fixes: keep native table cells and compact multiselect options. */
+.history-multiselect-options { overflow-y: auto; overflow-x: hidden; }
+.history-multiselect-options label { display: flex; align-items: flex-start; gap: 9px; width: 100%; min-width: 0; padding: 8px 7px; box-sizing: border-box; }
+.history-multiselect-options label > span { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: normal; overflow-wrap: break-word; line-height: 1.35; }
+.history-multiselect-options input[type="checkbox"] { appearance: auto; flex: 0 0 16px; width: 16px; min-width: 16px; max-width: 16px; height: 16px; min-height: 16px; max-height: 16px; margin: 1px 0 0; padding: 0; border-radius: 3px; accent-color: #0a579a; }
+.history-multiselect-search { outline: none; }
+.history-multiselect-search:focus { border-color: #0a579a; box-shadow: 0 0 0 3px rgba(10, 87, 154, .08); }
+.history-multiselect-menu { box-sizing: border-box; width: clamp(260px, 100%, 360px); max-width: calc(100vw - 24px); }
+.history-filters > .history-multiselect:last-child .history-multiselect-menu { left: auto; right: 0; }
+.history-table { width: 100%; min-width: 0; table-layout: fixed; }
+.history-table-wrap { overflow-x: hidden; }
+.history-cell-clamp { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; word-break: normal; overflow-wrap: normal; }
+@media (max-width: 900px) { .history-table { min-width: 820px; } .history-table-wrap { overflow-x: auto; } }
+@media (max-width: 640px) { .history-multiselect-menu { width: 100%; min-width: 0; left: 0; right: auto; } }
 .nav-link-disabled { color: #b4c0ce; font-size: 13px; cursor: not-allowed; opacity: .7; user-select: none; }
 html, body, button, input, select, textarea { font-family: "Manrope", sans-serif; }
 .calculator-form .owner-field .radio-option { align-items: center; }
