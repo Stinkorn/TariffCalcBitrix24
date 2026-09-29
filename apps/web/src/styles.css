@@ -762,7 +762,14 @@ body { background: #fff; }
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }.result-section { border: 1px solid #d5e0ef; border-radius: 13px; padding: 23px 25px; margin-bottom: 18px; background: #fff; }.result-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 17px; }.text-button { height: auto; padding: 0; background: transparent; color: #0a579a; font-size: 13px; }.stage-list { display: grid; gap: 10px; }.stage-card { display: flex; gap: 14px; padding: 15px; border: 1px solid #d8e3f0; border-radius: 9px; background: #f8fbff; }.stage-number { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: #0c2a61; color: #fff; font-size: 12px; font-weight: 700; }.stage-card div { display: grid; gap: 5px; }.stage-card strong { color: #0a579a; font-size: 12px; }.stage-card b { font-size: 14px; }.stage-card small { color: #7589a4; font-size: 12px; }.service-summary-list { display: grid; gap: 8px; }.service-summary { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 8px; background: #f2f4f7; color: #7589a4; font-size: 13px; }.service-summary.is-active { background: #edf6ff; color: #0a579a; }.service-summary span { font-weight: 700; }.service-summary em { margin-left: auto; font-size: 11px; font-style: normal; }.breakdown { align-self: start; min-height: 0; height: auto; margin-bottom: 0; }.breakdown-line { display: flex; justify-content: space-between; gap: 20px; padding: 7px 0; color: #6f829d; font-size: 13px; }.breakdown-line strong { color: #0c2a61; }.breakdown-line.emphasis { margin-top: 5px; padding-top: 14px; border-top: 1px solid #e3eaf3; color: #0c2a61; font-weight: 700; }.outline-button { height: 34px; border: 1px solid #0c2a61; background: #fff; color: #0c2a61; font-size: 12px; }.calculator-footer { display: flex; justify-content: space-between; padding: 18px 2px 0; color: #8da0b9; font-size: 11px; }
 @media (max-width: 900px) { .calculator-shell { padding: 20px 18px; }.form-row-route, .form-row-cargo, .form-row-options, .commercial-grid, .result-grid { grid-template-columns: 1fr; }.commercial-editor { border-right: 0; border-bottom: 1px solid #e0e8f2; padding: 0 0 20px; }.header-actions { gap: 20px; }.client-line { margin-top: 25px; } }
 @media (max-width: 560px) { .calculator-page-header { display: block; }.header-actions { align-items: stretch; margin-top: 20px; }.new-calculation { width: 100%; }.calculator-mode-switch { grid-template-columns: 1fr; }.calculator-card, .commercial-panel, .result-section { padding: 18px; }.calculator-footer { display: grid; gap: 8px; } }
-.pdf-button { width: 100%; height: 42px; margin-top: 18px; border-radius: 7px; background: #0c2a61; color: #fff; }
+.result-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 18px; align-items: start; }
+.history-save-action, .pdf-save-action { min-width: 0; }
+.history-save-button, .pdf-button { width: 100%; height: 42px; border-radius: 7px; font-size: 12px; }
+.history-save-button { background: #0c2a61; color: #fff; }
+.history-save-button.is-saved { background: #eaf4ff; color: #0a579a; border: 1px solid #cfe2f7; }
+.history-save-button:disabled, .pdf-button:disabled { opacity: .65; cursor: wait; }
+.history-save-error { margin: 8px 0 0; color: #b42318; font-size: 12px; }
+.pdf-button { margin-top: 0; border: 1px solid #0c2a61; background: #fff; color: #0c2a61; }
 .pdf-button:disabled { opacity: .65; cursor: wait; }.pdf-error { margin: 12px 0 0; color: #b42318; font-size: 12px; }
 .commercial-metrics div span { line-height: 1.35; }
 .stage-card { align-items: center; }
@@ -773,6 +780,7 @@ body { background: #fff; }
 .service-summary-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
 .service-summary { width: auto; padding: 7px 11px; border: 1px solid #e2e8f0; border-radius: 14px; font-size: 12px; }
 .service-summary.is-active { border-color: #d9eaff; }
+@media (max-width: 560px) { .result-actions { grid-template-columns: 1fr; } }
 .service-summary span { margin-right: 2px; }
 @media (min-width: 1450px) { .commercial-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .commercial-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.stage-card { align-items: flex-start; }.stage-result { min-width: 92px; } }

@@ -13,6 +13,7 @@ import type { CalculationPdfData } from '../features/calculator/pdf/types';
 import type { CalculationQuote, CalculatorCategory, CalculatorFormState } from '../features/calculator/types';
 
 type Counterparty = { id?: string | null; type?: string | null; name?: string | null };
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const initialForm: CalculatorFormState = { origin: '', originLocationId: null, destination: '', destinationLocationId: null, container: '', containerId: null, cargo: '', cargoId: null, weightKg: '', owner: 'COC', identification: false, genset: false, dangerous: false, paymentDelay: '0' };
 
 export function DealCalculatorPage() {
@@ -27,7 +28,11 @@ export function DealCalculatorPage() {
   const [counterparty, setCounterparty] = useState<Counterparty | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [quotePending, setQuotePending] = useState(false);
+  const [quoteCurrent, setQuoteCurrent] = useState(false);
   const savedCalculationRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef(false);
   const calculationVersionRef = useRef(0);
   const saleRateRecalcRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dealId = searchParams.get('dealId') ?? '';
@@ -63,16 +68,21 @@ export function DealCalculatorPage() {
   // are intentionally not used to prefill the calculator.
   // Every deal calculation starts with empty fields.
 
-  useEffect(() => { sendResizeToBitrix(); }, [quote, category, form, saleRate]);
+  useEffect(() => { sendResizeToBitrix(); }, [quote, category, form, saleRate, saveStatus, pdfError]);
 
-  function updateForm(patch: Partial<CalculatorFormState>) { setForm((current) => ({ ...current, ...patch })); setQuote(null); setCalculationError(''); savedCalculationRef.current = null; setErrors((current) => { const next = { ...current }; Object.keys(patch).forEach((key) => { delete next[key as keyof CalculatorFormState]; }); return next; }); }
-  function changeCategory(next: CalculatorCategory) { setCategory(next); setQuote(null); setSaleRate(''); setErrors({}); setForm((current) => ({ ...current, container: '', containerId: null, genset: next === 'REF' ? current.genset : false })); }
+  function updateForm(patch: Partial<CalculatorFormState>) { setForm((current) => ({ ...current, ...patch })); setQuote(null); setQuoteCurrent(false); setSaveStatus('idle'); setCalculationError(''); savedCalculationRef.current = null; setErrors((current) => { const next = { ...current }; Object.keys(patch).forEach((key) => { delete next[key as keyof CalculatorFormState]; }); return next; }); }
+  function changeCategory(next: CalculatorCategory) { setCategory(next); setQuote(null); setQuoteCurrent(false); setSaveStatus('idle'); savedCalculationRef.current = null; setSaleRate(''); setErrors({}); setForm((current) => ({ ...current, container: '', containerId: null, genset: next === 'REF' ? current.genset : false })); }
   async function requestQuote(nextSaleRate: string) {
-    const response = await apiFetch('/calculator/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, originLocationId: form.originLocationId, destinationLocationId: form.destinationLocationId, containerId: Number(form.containerId), cargoId: form.cargoId ? Number(form.cargoId) : null, weightKg: Number(form.weightKg.replace(/\s/g, '')), owner: form.owner, services: { identification: form.identification, genset: form.genset, dangerous: form.dangerous }, paymentDelayDays: Number(form.paymentDelay), saleRate: nextSaleRate ? Number(nextSaleRate) : null }) });
-    if (!response.ok) { const data = await response.json().catch(() => null) as { message?: string } | null; throw new Error(data?.message || `Не удалось рассчитать маршрут (HTTP ${response.status})`); }
-    calculationVersionRef.current += 1;
-    setQuote(await response.json() as CalculationQuote);
-    savedCalculationRef.current = null;
+    setQuotePending(true);
+    try {
+      const response = await apiFetch('/calculator/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, originLocationId: form.originLocationId, destinationLocationId: form.destinationLocationId, containerId: Number(form.containerId), cargoId: form.cargoId ? Number(form.cargoId) : null, weightKg: Number(form.weightKg.replace(/\s/g, '')), owner: form.owner, services: { identification: form.identification, genset: form.genset, dangerous: form.dangerous }, paymentDelayDays: Number(form.paymentDelay), saleRate: nextSaleRate ? Number(nextSaleRate) : null }) });
+      if (!response.ok) { const data = await response.json().catch(() => null) as { message?: string } | null; throw new Error(data?.message || `Не удалось рассчитать маршрут (HTTP ${response.status})`); }
+      calculationVersionRef.current += 1;
+      setQuote(await response.json() as CalculationQuote);
+      setQuoteCurrent(true);
+      setSaveStatus('idle');
+      savedCalculationRef.current = null;
+    } finally { setQuotePending(false); }
   }
   async function calculate() {
     const nextErrors = validateCalculatorForm(form); setErrors(nextErrors); setCalculationError('');
@@ -86,20 +96,26 @@ export function DealCalculatorPage() {
   function changeSaleRate(nextValue: string) {
     setSaleRate(nextValue);
     if (!quote || !form.originLocationId || !form.destinationLocationId || !form.containerId || !form.weightKg) return;
+    setSaveStatus('idle');
+    setQuoteCurrent(false);
+    savedCalculationRef.current = null;
+    setQuotePending(true);
     if (saleRateRecalcRef.current) clearTimeout(saleRateRecalcRef.current);
     saleRateRecalcRef.current = setTimeout(() => { void requestQuote(nextValue).catch((error) => setCalculationError(error instanceof Error ? error.message : 'Не удалось пересчитать коммерческую ставку')); }, 300);
   }
   async function saveCurrentCalculation() {
-    if (!quote || !form.originLocationId || !form.destinationLocationId) return;
+    if (!quote || !quoteCurrent || quotePending || saveInFlightRef.current || saveStatus === 'saving' || saveStatus === 'saved' || !form.originLocationId || !form.destinationLocationId) return;
     const fingerprint = `${calculationVersionRef.current}:${category}:${form.originLocationId}:${form.destinationLocationId}:${form.containerId}:${form.cargoId}:${form.weightKg}:${form.owner}:${form.paymentDelay}:${form.identification}:${form.genset}:${form.dangerous}`;
-    if (savedCalculationRef.current === fingerprint) return;
+    if (savedCalculationRef.current === fingerprint) { setSaveStatus('saved'); return; }
     const weightKg = Number(form.weightKg.replace(/\s/g, ''));
     if (!Number.isFinite(weightKg)) return;
     const parseAmount = (value: string) => Number(value.replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
     const effectiveSaleRate = saleRate && Number(saleRate) > 0 ? Number(saleRate) : (quote.baseDoorToDoor ?? 0);
     const services = { identification: form.identification, genset: form.genset, dangerous: form.dangerous };
-    savedCalculationRef.current = fingerprint;
-    const response = await apiFetch('/calculations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    setSaveStatus('saving');
+    saveInFlightRef.current = true;
+    try {
+      const response = await apiFetch('/calculations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       dealId: dealId || undefined,
       counterpartyId: counterparty?.id || undefined,
       counterpartyType: counterparty?.type || undefined,
@@ -118,10 +134,22 @@ export function DealCalculatorPage() {
       lines: quote.routeStages.map((stage) => ({ stage: stage.mode, name: stage.title, cost: parseAmount(stage.amount), currency: 'RUB', sortOrder: stage.number })),
       services,
       tariffSnapshot: { tariffDate: CURRENT_TARIFF_DATE, request: { category, originLocationId: form.originLocationId, origin: form.origin, destinationLocationId: form.destinationLocationId, destination: form.destination, containerId: Number(form.containerId), container: form.container, cargoId: form.cargoId ? Number(form.cargoId) : null, cargo: form.cargo, weightKg, owner: form.owner, services, paymentDelayDays: Number(form.paymentDelay) }, commercial: { saleRate: saleRate ? Number(saleRate) : null, effectiveSaleRate, baseDoorToDoor: quote.baseDoorToDoor }, quote }
-    }) });
-    if (!response.ok) savedCalculationRef.current = null;
+      }) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      savedCalculationRef.current = fingerprint;
+      setSaveStatus('saved');
+    } catch {
+      savedCalculationRef.current = null;
+      setSaveStatus('error');
+    } finally {
+      saveInFlightRef.current = false;
+    }
   }
-  function newCalculation() { void saveCurrentCalculation().catch(() => { savedCalculationRef.current = null; }); setForm(initialForm); setCategory('DRY'); setQuote(null); setCalculationError(''); setSaleRate(''); setErrors({}); }
+  function newCalculation() {
+    if (quote && saveStatus !== 'saved' && !window.confirm('Текущий расчёт не сохранён в историю.\nНачать новый расчёт без сохранения?')) return;
+    if (saleRateRecalcRef.current) clearTimeout(saleRateRecalcRef.current);
+    setForm(initialForm); setCategory('DRY'); setQuote(null); setQuoteCurrent(false); setCalculationError(''); setSaleRate(''); setErrors({}); setSaveStatus('idle'); setPdfError(''); setQuotePending(false); savedCalculationRef.current = null;
+  }
   async function savePdf() {
     if (!quote || pdfLoading) return;
     setPdfLoading(true); setPdfError('');
@@ -131,8 +159,8 @@ export function DealCalculatorPage() {
   }
 
   return <main className="calculator-page"><div className="calculator-shell">
-    <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
+    <header className="calculator-page-header"><div><h1>Расчёт тарифа</h1><p className="client-line">Клиент: <strong>{counterparty?.name || 'Не указан'}</strong></p></div><div className="header-actions"><button className="new-calculation" type="button" onClick={newCalculation} disabled={saveStatus === 'saving'}>Новый расчёт</button><span className="date-badge">Дата расчёта: {today}</span></div></header>
     <section className="calculator-card"><ContainerModeSwitch category={category} onChange={changeCategory} /><CalculatorForm category={category} form={form} errors={errors} onChange={updateForm} onSubmit={() => void calculate()} />{calculationError && <p className="calculator-error">{calculationError}</p>}</section>
-    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /></div><CalculationBreakdown quote={quote} onSavePdf={() => void savePdf()} pdfLoading={pdfLoading} pdfError={pdfError} /></div></>}
+    {quote && <><CommercialRatePanel quote={quote} saleRate={saleRate} onSaleRateChange={changeSaleRate} /><div className="result-grid"><div><RouteStages quote={quote} /><AdditionalServices quote={quote} /></div><CalculationBreakdown quote={quote} onSaveHistory={() => void saveCurrentCalculation()} saveStatus={saveStatus} saveDisabled={quotePending || !quoteCurrent} onSavePdf={() => void savePdf()} pdfLoading={pdfLoading} pdfError={pdfError} /></div></>}
   </div></main>;
 }
