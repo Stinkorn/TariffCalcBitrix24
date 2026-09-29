@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { UserRoleCode } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { CalculationsService, type HistoryQuery } from './calculations.service';
@@ -34,6 +34,15 @@ export class CalculationsController {
   @Roles(UserRoleCode.ADMIN)
   getHistoryFilterOptions(@Req() request: AuthenticatedRequest) {
     return this.calculationsService.getHistoryFilterOptions(request.user.portalId);
+  }
+
+  @Post('history/pdf-data')
+  @Roles(UserRoleCode.ADMIN)
+  getHistoryPdfData(@Body() body: { ids?: unknown }, @Req() request: AuthenticatedRequest) {
+    if (!Array.isArray(body?.ids) || body.ids.some((id) => typeof id !== 'string')) {
+      throw new BadRequestException('ids must be an array of calculation IDs');
+    }
+    return this.calculationsService.getHistoryPdfData(body.ids, request.user.portalId);
   }
 
   @Get('history/:id/versions')

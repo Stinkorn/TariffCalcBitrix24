@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -179,6 +179,20 @@ export class CalculationsService {
     };
   }
 
+  async getHistoryPdfData(ids: string[], authenticatedPortalId: string) {
+    const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+    if (uniqueIds.length === 0 || uniqueIds.length > 20) throw new BadRequestException('Select between 1 and 20 calculations');
+    const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
+    const rows = await this.prisma.calculation.findMany({ where: { id: { in: uniqueIds }, portalDomain: authorizedPortalDomain } });
+    if (rows.length !== uniqueIds.length) throw new NotFoundException('One or more calculations are unavailable');
+    const items = rows.map((row) => {
+      const data = mapCalculationSnapshotToPdf(row);
+      if (!data) throw new BadRequestException(`PDF snapshot is unavailable for calculation ${row.id}`);
+      return { id: row.id, data };
+    });
+    return { items };
+  }
+
   async getRequestHistory(id: string, authenticatedPortalId: string) {
     const authorizedPortalDomain = await this.resolveAuthorizedPortal(authenticatedPortalId);
     const item = await this.prisma.calculation.findFirst({ where: { id, portalDomain: authorizedPortalDomain } });
@@ -214,11 +228,60 @@ export class CalculationsService {
     const fingerprints = Array.from(new Set(rows.map((row) => row.requestFingerprint).filter(Boolean))) as string[];
     const candidates = fingerprints.length ? await this.prisma.calculation.findMany({ where: { portalDomain: authorizedPortalDomain, requestFingerprint: { in: fingerprints } }, select: { id: true, requestFingerprint: true, portalDomain: true, clientPrice: true, createdAt: true } }) : [];
     const deltas = calculateDeltas(candidates);
-    return rows.map((row) => ({ id: row.id, counterparty: row.counterpartyName, origin: row.origin, destination: row.destination, category: row.category, container: row.containerType, weightKg: Number(row.weightKg), createdAt: row.createdAt, clientPrice: Number(row.clientPrice), currency: row.currency, isCurrent: row.isCurrent, requestFingerprint: row.requestFingerprint, deltaPercent: deltas.get(row.id) ?? null }));
+    return rows.map((row) => ({ id: row.id, counterparty: row.counterpartyName, origin: row.origin, destination: row.destination, category: row.category, container: row.containerType, weightKg: Number(row.weightKg), createdAt: row.createdAt, clientPrice: Number(row.clientPrice), currency: row.currency, isCurrent: row.isCurrent, requestFingerprint: row.requestFingerprint, pdfAvailable: isPdfSnapshot(row.tariffSnapshot), deltaPercent: deltas.get(row.id) ?? null }));
   }
 }
 
 export type HistoryQuery = { page?: string; pageSize?: string; counterpartyId?: string | string[]; counterpartyName?: string | string[]; containerType?: string | string[]; containerId?: string | string[]; originLocationId?: string | string[]; destinationLocationId?: string | string[]; originLegacy?: string | string[]; destinationLegacy?: string | string[]; status?: string | string[] };
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPdfSnapshot(snapshot: unknown) {
+  return Boolean(mapSnapshot(snapshot, null));
+}
+
+function mapCalculationSnapshotToPdf(row: any) {
+  return mapSnapshot(row.tariffSnapshot, row);
+}
+
+function mapSnapshot(snapshot: unknown, row: any | null) {
+  if (!isRecord(snapshot) || !isRecord(snapshot.request) || !isRecord(snapshot.commercial) || !isRecord(snapshot.quote)) return null;
+  const request = snapshot.request;
+  const commercial = snapshot.commercial;
+  const category = request.category === 'DRY' || request.category === 'REF' ? request.category : row?.category === 'DRY' || row?.category === 'REF' ? row.category : null;
+  const weight = Number(request.weightKg);
+  const paymentDelayDays = Number(request.paymentDelayDays);
+  const baseDoorToDoor = commercial.baseDoorToDoor === null ? null : Number(commercial.baseDoorToDoor);
+  const tariffDate = typeof snapshot.tariffDate === 'string' ? snapshot.tariffDate.trim() : '';
+  const origin = typeof request.origin === 'string' ? request.origin.trim() : '';
+  const destination = typeof request.destination === 'string' ? request.destination.trim() : '';
+  const container = typeof request.container === 'string' ? request.container.trim() : row?.containerType ?? '';
+  const saleRate = row ? Number(row.clientPrice) : Number(commercial.effectiveSaleRate ?? commercial.saleRate);
+  const owner = typeof request.owner === 'string' ? request.owner : '';
+  if (!category || !tariffDate || !origin || !destination || !container || !owner || !Number.isFinite(weight) || !Number.isInteger(paymentDelayDays) || (baseDoorToDoor !== null && !Number.isFinite(baseDoorToDoor)) || !Number.isFinite(saleRate) || !hasQuoteShape(snapshot.quote)) return null;
+  return {
+    dealId: row?.dealId ?? '',
+    counterpartyName: row?.counterpartyName ?? 'Не указан',
+    category,
+    origin,
+    destination,
+    cargo: typeof request.cargo === 'string' ? request.cargo : '',
+    container,
+    weightKg: String(request.weightKg),
+    owner,
+    paymentDelayDays,
+    tariffDate,
+    saleRate,
+    baseDoorToDoor,
+    quote: snapshot.quote
+  };
+}
+
+function hasQuoteShape(quote: Record<string, any>) {
+  return Array.isArray(quote.breakdown) && Array.isArray(quote.routeStages) && Array.isArray(quote.additionalServices) && isRecord(quote.commercial);
+}
 
 export function toStringArray(value: unknown): string[] {
   const values = Array.isArray(value) ? value : value === undefined ? [] : [value];

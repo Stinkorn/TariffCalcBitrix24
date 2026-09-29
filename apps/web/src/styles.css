@@ -924,6 +924,16 @@ html, body, #root, .calculator-page { width: 100%; max-width: 100%; min-width: 0
 .history-cell-clamp { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.35; word-break: normal; overflow-wrap: normal; }
 @media (max-width: 900px) { .history-table { min-width: 820px; } .history-table-wrap { overflow-x: auto; } }
 @media (max-width: 640px) { .history-multiselect-menu { width: 100%; min-width: 0; left: 0; right: auto; } }
+.history-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; position: relative; }
+.history-pdf-button { height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: #0c2a61; color: #fff; font-size: 11px; cursor: pointer; }
+.history-pdf-button:disabled { background: #b7c4d5; color: #fff; cursor: default; }
+.history-pdf-error { position: absolute; top: calc(100% + 6px); right: 0; color: #b33a34; font-size: 10px; white-space: nowrap; }
+.history-pdf-checkbox { width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: #0a579a; vertical-align: middle; }
+.history-pdf-checkbox:disabled { opacity: .45; cursor: not-allowed; }
+button.history-current-button { height: auto; padding: 0; border: 0; background: transparent; color: #0a579a; font-size: 10px; line-height: 1.35; text-align: left; white-space: nowrap; }
+button.history-current-button:disabled { background: transparent; color: #8da0b8; opacity: 1; cursor: default; }
+.history-table td { padding-top: 14px; padding-bottom: 14px; line-height: 1.35; }
+@media (max-width: 640px) { .history-toolbar { align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; } .history-pdf-error { position: static; width: 100%; white-space: normal; } }
 .nav-link-disabled { color: #b4c0ce; font-size: 13px; cursor: not-allowed; opacity: .7; user-select: none; }
 html, body, button, input, select, textarea { font-family: "Manrope", sans-serif; }
 .calculator-form .owner-field .radio-option { align-items: center; }
